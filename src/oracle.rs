@@ -1,45 +1,40 @@
-use std::sync::Arc;
+use std::sync::{Arc, Mutex, RwLock};
 use hashbrown::HashMap;
-use kona_preimage::{HintWriterClient, PreimageKey, PreimageOracleClient};
+use kona_preimage::{HintReaderServer, HintRouter, HintWriterClient, PreimageFetcher, PreimageKey, PreimageOracleClient};
 use kona_preimage::errors::{PreimageOracleError, PreimageOracleResult};
+use kona_host::fetcher::Fetcher;
+use kona_host::kv::KeyValueStore;
 
 #[derive(Clone, Debug)]
-pub struct MemoryOracleClient {
-    /// Avoid deepcopy by clone operation because the preimage size is so big.
-    preimages: Arc<HashMap<PreimageKey, Vec<u8>>>,
+pub struct PreimageIO<KV> where
+    KV: KeyValueStore + ?Sized{
+    pub fetcher: Arc<RwLock<Fetcher<KV>>>
 }
 
 #[async_trait::async_trait]
-impl PreimageOracleClient for MemoryOracleClient {
+impl <KV> PreimageOracleClient for PreimageIO<KV>
+where
+    KV: KeyValueStore + ?Sized {
     async fn get(&self, key: PreimageKey) -> PreimageOracleResult<Vec<u8>> {
-        if let Some(value) = self.preimages.get(&key) {
-            Ok(value.clone())
-        } else {
-            Err(PreimageOracleError::Other(format!(
-                "key not found: {:?}",
-                key
-            )))
-        }
+        self.fetcher.read().unwrap().get_preimage(key.into())
+            .await.map_err(|e| PreimageOracleError::Other(e.to_string()))
     }
 
     async fn get_exact(&self, key: PreimageKey, buf: &mut [u8]) -> PreimageOracleResult<()> {
-        if let Some(value) = self.preimages.get(&key) {
-            buf.copy_from_slice(value.as_slice());
-            Ok(())
-        } else {
-            Err(PreimageOracleError::Other(format!(
-                "key not found: {:?}",
-                key
-            )))
-        }
+        let data = self.fetcher.read().unwrap().get_preimage(key.into())
+            .await.map_err(|e| PreimageOracleError::Other(e.to_string()))?;
+        buf.copy_from_slice(data.as_slice());
+        Ok(())
     }
 }
 
 #[async_trait::async_trait]
-impl HintWriterClient for MemoryOracleClient {
-    async fn write(&self, _hint: &str) -> PreimageOracleResult<()> {
-        Err(PreimageOracleError::Other(
-            "unsupported operation".to_string(),
-        ))
+impl <KV> HintWriterClient for PreimageIO<KV> where
+    KV: KeyValueStore + ?Sized
+{
+    async fn write(&self, hint: &str) -> PreimageOracleResult<()> {
+        let lock = self.fetcher.lock();
+        lock.hint(hint);
+        Ok(())
     }
 }
