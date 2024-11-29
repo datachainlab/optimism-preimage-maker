@@ -51,4 +51,6 @@ async fn main() -> anyhow::Result<()>{
         claiming_output_root,
         sync_status.finalized_l2.number
     ).verify(config.l2_chain_id, &rollup_config, Arc::new(oracle)).await?;
+
+    Ok(())
 }

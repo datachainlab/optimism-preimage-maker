@@ -11,8 +11,11 @@ use reqwest::Client;
 use serde::Serialize;
 use tokio::sync::RwLock;
 
+const ABOUT: &str = "
+optimism-preimage-maker is a CLI application that runs the Kona derivation.
+";
 #[derive(Default, Parser, Serialize, Clone, Debug)]
-#[command(about = ABOUT, version, styles = cli_styles())]
+#[command(about = ABOUT, version)]
 pub struct Config {
     /// Address of L2 JSON-RPC endpoint to use (eth and debug namespace required).
     #[clap(
