@@ -1,0 +1,56 @@
+name: CI
+
+on:
+  push:
+    branches:
+      - main
+  #pull_request:
+  workflow_dispatch:
+
+jobs:
+  lint:
+    name: lint
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions-rust-lang/setup-rust-toolchain@v1
+      - uses: Swatinem/rust-cache@v2
+      - name: Install components
+        run: |
+          rustup component add rustfmt clippy
+          cargo install cargo-machete
+      - name: Check format
+        run: cargo fmt --all -- --check
+      - name: Check clippy
+        run: cargo clippy --locked -- -D warnings
+      - name: Check deps
+        run: cargo machete
+  test:
+    name: test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+          fetch-depth: 0
+      - uses: actions-rust-lang/setup-rust-toolchain@v1
+      - uses: Swatinem/rust-cache@v2
+      - uses: extractions/setup-just@v2
+        with:
+          just-version: 1.40.0
+      - name: Install Foundry
+        uses: foundry-rs/foundry-toolchain@v1
+      - name: Install kurtosis
+        run: |
+          sudo apt-get install jq
+          echo "deb [trusted=yes] https://apt.fury.io/kurtosis-tech/ /" | sudo tee /etc/apt/sources.list.d/kurtosis.list
+          sudo apt update
+          sudo apt remove kurtosis-cli
+          sudo apt install kurtosis-cli=1.6.0 -V
+      - name: Start optimism
+        run: |
+          make chain
+          make devnet-up
+          make set-port
+          make wait
+          make test
