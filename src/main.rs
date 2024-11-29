@@ -1,11 +1,17 @@
 extern crate core;
 
-use std::sync::{Arc, RwLock};
+use std::sync::{Arc};
 use optimism_derivation::derivation::Derivation;
 use clap::Parser;
 use kona_host::fetcher::Fetcher;
 use op_alloy_genesis::RollupConfig;
 use serde::Serialize;
+use tokio::sync::RwLock;
+use tracing::Level;
+use tracing::metadata::LevelFilter;
+use tracing_subscriber::filter;
+use tracing_subscriber::layer::SubscriberExt;
+use tracing_subscriber::util::SubscriberInitExt;
 use crate::config::Config;
 use crate::l2::client::L2Client;
 use crate::oracle::PreimageIO;
@@ -18,6 +24,14 @@ mod config;
 async fn main() -> anyhow::Result<()>{
     let config = Config::parse();
 
+    // start tracing
+    let filter = filter::EnvFilter::from_default_env().add_directive(LevelFilter::INFO.into());
+    tracing_subscriber::registry()
+        .with(tracing_subscriber::fmt::layer())
+        .with(filter)
+        .init();
+    tracing::info!("start optimism preimage-maker");
+
     let rollup_config = match &config.rollup_config_path {
         None => RollupConfig::from_l2_chain_id(config.l2_chain_id).unwrap(),
         Some(path) => {
@@ -26,7 +40,7 @@ async fn main() -> anyhow::Result<()>{
         }
     };
 
-    let l2_client = L2Client::default();
+    let l2_client = L2Client::new(config.l2_rollup_node_address.clone(), config.l2_node_address.clone());
     let sync_status = l2_client.sync_status().await?;
 
     // TODO last saved

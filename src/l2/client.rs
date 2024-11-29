@@ -1,6 +1,8 @@
 use alloy_primitives::B256;
 use anyhow::Result;
 use optimism_derivation::derivation::Derivation;
+use reqwest::Response;
+use serde_json::Value;
 
 #[derive(Debug, Clone, serde::Deserialize)]
 pub struct RpcResult<T> {
@@ -13,7 +15,7 @@ pub struct RpcResult<T> {
 struct RpcRequest {
     jsonrpc: String,
     method: String,
-    params: Vec<String>,
+    params: Vec<Value>,
     id: i64
 }
 
@@ -83,16 +85,21 @@ pub struct L2Client {
     op_node_addr: String,
     op_geth_addr: String
 }
+
 impl Default for L2Client {
     fn default() -> Self {
-        Self {
-            op_node_addr: "http://localhost:7545".into(),
-            op_geth_addr: "http://localhost:9545".into()
-        }
+        Self::new("http://localhost:7545".into(), "http://localhost:9545".into())
     }
 }
 
 impl L2Client {
+
+    pub fn new(op_node_addr: String, op_geth_addr: String) -> Self {
+        Self {
+            op_node_addr,
+            op_geth_addr
+        }
+    }
     pub async fn sync_status(&self) -> Result<SyncStatus> {
 
         let client = reqwest::Client::new();
@@ -104,6 +111,7 @@ impl L2Client {
             .post(&self.op_node_addr)
             .header("Content-Type", "application/json")
             .json(&body).send().await?;
+        let response = self.check_response(response).await?;
         let result : RpcResult<SyncStatus> = response.json().await?;
         Ok(result.result)
     }
@@ -112,13 +120,14 @@ impl L2Client {
         let client = reqwest::Client::new();
         let body = RpcRequest {
             method: "optimism_outputAtBlock".into(),
-            params: vec![format!("{:X}", number)],
+            params: vec![format!("0x{:X}", number).into()],
             ..Default::default()
         };
         let response  = client
             .post(&self.op_node_addr)
             .header("Content-Type", "application/json")
             .json(&body).send().await?;
+        let response = self.check_response(response).await?;
         let result : RpcResult<OutputRootAtBlock> = response.json().await?;
         Ok(result.result.output_root)
     }
@@ -126,16 +135,26 @@ impl L2Client {
     pub async fn get_block_by_number(&self, number: u64) -> Result<Block> {
         let client = reqwest::Client::new();
         let body = RpcRequest {
-            method: "get_blockByNumber".into(),
-            params: vec![format!("{:X}", number)],
+            method: "eth_getBlockByNumber".into(),
+            params: vec![format!("0x{:X}", number).into(), false.into()],
             ..Default::default()
         };
+        tracing::info!("body: {:?}", body);
         let response  = client
             .post(&self.op_geth_addr)
             .header("Content-Type", "application/json")
             .json(&body).send().await?;
+        let response = self.check_response(response).await?;
         let result : RpcResult<Block> = response.json().await?;
         Ok(result.result)
+    }
+
+    async fn check_response(&self, response: Response) -> Result<Response> {
+        if response.status().is_success() {
+            Ok(response)
+        } else {
+            Err(anyhow::anyhow!("Request failed with status: {} body={:?}", response.status(), response.text().await))
+        }
     }
 }
 
