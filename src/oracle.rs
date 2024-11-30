@@ -3,12 +3,20 @@ use std::sync::{Arc,};
 use kona_preimage::{HintWriterClient, PreimageFetcher, PreimageKey, PreimageOracleClient};
 use kona_preimage::errors::{PreimageOracleError, PreimageOracleResult};
 use kona_host::kv::KeyValueStore;
-use tokio::sync::RwLock;
 use crate::fetcher::Fetcher;
 
 pub struct PreimageIO<KV> where
     KV: KeyValueStore + ?Sized + Send + Sync  {
-    pub fetcher: Arc<Fetcher<KV>>
+    fetcher: Arc<Fetcher<KV>>
+}
+
+impl <KV> PreimageIO<KV> where
+    KV: KeyValueStore + ?Sized + Send + Sync {
+    pub fn new(fetcher: Fetcher<KV>) -> Self {
+        Self {
+            fetcher: Arc::new(fetcher)
+        }
+    }
 }
 
 impl <KV> Clone for PreimageIO<KV> where
@@ -50,6 +58,7 @@ impl <KV> HintWriterClient for PreimageIO<KV> where
     KV: KeyValueStore + ?Sized + Send + Sync
 {
     async fn write(&self, hint: &str) -> PreimageOracleResult<()> {
+        // TODO 毎回再取得が実行されるのでとても遅い。ヒント毎にキャッシュが必要
         self.fetcher.prefetch(hint).await.map_err(|e| PreimageOracleError::Other(e.to_string()))?;
         Ok(())
     }

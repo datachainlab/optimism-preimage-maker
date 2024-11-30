@@ -6,7 +6,7 @@ use alloy_transport_http::Http;
 use anyhow::{anyhow, Result};
 use clap::Parser;
 use kona_derive_alloy::{OnlineBeaconClient, OnlineBlobProvider};
-use kona_host::kv::{LocalKeyValueStore, MemoryKeyValueStore, SharedKeyValueStore, SplitKeyValueStore};
+use kona_host::kv::{DiskKeyValueStore, LocalKeyValueStore, MemoryKeyValueStore, SharedKeyValueStore, SplitKeyValueStore};
 use reqwest::Client;
 use serde::Serialize;
 use tokio::sync::RwLock;
@@ -88,9 +88,9 @@ impl Config {
     }
 
     pub fn construct_kv_store(&self) -> SharedKeyValueStore {
-        let mem_kv_store = MemoryKeyValueStore::new();
-        let split_kv_store = SplitKeyValueStore::new(mem_kv_store.clone(), mem_kv_store.clone());
-        let kv_store: SharedKeyValueStore = Arc::new(RwLock::new(split_kv_store));
+        let kv_store= DiskKeyValueStore::new(".data/remote".into());
+        //let mem_kv_store = MemoryKeyValueStore::new();
+        let kv_store: SharedKeyValueStore = Arc::new(RwLock::new(kv_store));
         kv_store
     }
 }

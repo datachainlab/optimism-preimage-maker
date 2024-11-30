@@ -3,6 +3,7 @@ extern crate core;
 use std::sync::{Arc};
 use optimism_derivation::derivation::Derivation;
 use clap::Parser;
+use kona_client::CachingOracle;
 use op_alloy_genesis::RollupConfig;
 use serde::Serialize;
 use tokio::sync::RwLock;
@@ -26,7 +27,7 @@ async fn main() -> anyhow::Result<()>{
     let config = Config::parse();
 
     // start tracing
-    let filter = filter::EnvFilter::from_default_env().add_directive(LevelFilter::INFO.into());
+    let filter = filter::EnvFilter::from_default_env().add_directive("optimism_preimage_maker=info".parse()?);
     tracing_subscriber::registry()
         .with(tracing_subscriber::fmt::layer())
         .with(filter)
@@ -45,27 +46,35 @@ async fn main() -> anyhow::Result<()>{
     let sync_status = l2_client.sync_status().await?;
 
     // TODO last saved
-    let agreed_l2_hash= l2_client.get_block_by_number(sync_status.finalized_l2.number - 1).await?.hash;
-    let agreed_output_root = l2_client.output_root_at(sync_status.finalized_l2.number - 1).await?;
 
-    let claiming_l2_hash= l2_client.get_block_by_number(sync_status.finalized_l2.number).await?.hash;
-    let claiming_output_root = l2_client.output_root_at(sync_status.finalized_l2.number).await?;
 
     let global_kv_store = config.construct_kv_store();
     let (l1_provider, blob_provider, l2_provider) = config.create_providers().await?;
-    let fetcher = Fetcher::new(global_kv_store, l1_provider, blob_provider, l2_provider, agreed_l2_hash);
-    let oracle = PreimageIO {
-        fetcher: Arc::new(fetcher)
-    };
 
-    Derivation::new(
-        sync_status.finalized_l1.hash,
-        agreed_l2_hash,
-        agreed_output_root,
-        claiming_l2_hash,
-        claiming_output_root,
-        sync_status.finalized_l2.number
-    ).verify(config.l2_chain_id, &rollup_config, Arc::new(oracle)).await?;
+    for n in 0..10 {
+        let i = 1;
+
+        let claiming_l2_number = sync_status.finalized_l2.number - i;
+        tracing::info!("start derivation claiming number = {}", claiming_l2_number);
+
+        let claiming_l2_hash= l2_client.get_block_by_number(claiming_l2_number).await?.hash;
+        let claiming_output_root = l2_client.output_root_at(claiming_l2_number).await?;
+
+        let agreed_l2_hash= l2_client.get_block_by_number(sync_status.finalized_l2.number - i - 1).await?.hash;
+        let agreed_output_root = l2_client.output_root_at(sync_status.finalized_l2.number - i - 1).await?;
+
+        let fetcher = Fetcher::new(global_kv_store.clone(), l1_provider.clone(), blob_provider.clone(), l2_provider.clone(), agreed_l2_hash);
+        let oracle = PreimageIO::new(fetcher);
+
+        Derivation::new(
+            sync_status.finalized_l1.hash,
+            agreed_l2_hash,
+            agreed_output_root,
+            claiming_l2_hash,
+            claiming_output_root,
+            claiming_l2_number
+        ).verify(config.l2_chain_id, &rollup_config, Arc::new(oracle)).await?;
+    }
 
     Ok(())
 }

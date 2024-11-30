@@ -17,7 +17,6 @@ use kona_preimage::{PreimageKey, PreimageKeyType};
 use op_alloy_protocol::BlockInfo;
 use std::sync::Arc;
 use kona_host::kv::KeyValueStore;
-use kona_host::util;
 use optimism_derivation::precompiles;
 use tokio::sync::RwLock;
 use tracing::{error, trace, warn};
