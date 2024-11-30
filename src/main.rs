@@ -3,7 +3,6 @@ extern crate core;
 use std::sync::{Arc};
 use optimism_derivation::derivation::Derivation;
 use clap::Parser;
-use kona_host::fetcher::Fetcher;
 use op_alloy_genesis::RollupConfig;
 use serde::Serialize;
 use tokio::sync::RwLock;
@@ -13,12 +12,14 @@ use tracing_subscriber::filter;
 use tracing_subscriber::layer::SubscriberExt;
 use tracing_subscriber::util::SubscriberInitExt;
 use crate::config::Config;
+use crate::fetcher::Fetcher;
 use crate::l2::client::L2Client;
 use crate::oracle::PreimageIO;
 
 mod oracle;
 mod l2;
 mod config;
+mod fetcher;
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()>{
@@ -50,11 +51,11 @@ async fn main() -> anyhow::Result<()>{
     let claiming_l2_hash= l2_client.get_block_by_number(sync_status.finalized_l2.number).await?.hash;
     let claiming_output_root = l2_client.output_root_at(sync_status.finalized_l2.number).await?;
 
-    let kv_store = config.construct_kv_store();
+    let global_kv_store = config.construct_kv_store();
     let (l1_provider, blob_provider, l2_provider) = config.create_providers().await?;
-    let fetcher = Fetcher::new(kv_store.clone(), l1_provider, blob_provider, l2_provider, claiming_l2_hash);
+    let fetcher = Fetcher::new(global_kv_store, l1_provider, blob_provider, l2_provider, agreed_l2_hash);
     let oracle = PreimageIO {
-        fetcher: Arc::new(RwLock::new(fetcher))
+        fetcher: Arc::new(fetcher)
     };
 
     Derivation::new(
