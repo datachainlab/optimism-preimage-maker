@@ -56,6 +56,7 @@ pub struct Config {
     /// look up the config in the superchain registry.
     #[clap(
         long,
+        default_value="../optimism/.devnet/rollup.json"
     )]
     pub rollup_config_path: Option<PathBuf>,
 }

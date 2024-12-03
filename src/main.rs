@@ -49,6 +49,8 @@ async fn main() -> anyhow::Result<()>{
 
     let global_kv_store = config.construct_kv_store();
     let (l1_provider, blob_provider, l2_provider) = config.create_providers().await?;
+    let fetcher = Fetcher::new(global_kv_store.clone(), l1_provider.clone(), blob_provider.clone(), l2_provider.clone());
+    let fetcher = Arc::new(fetcher);
 
     let mut hints = Vec::new();
     for n in 0..10 {
@@ -62,8 +64,6 @@ async fn main() -> anyhow::Result<()>{
         let agreed_l2_hash= l2_client.get_block_by_number(sync_status.finalized_l2.number - i - 1).await?.hash;
         let agreed_output_root = l2_client.output_root_at(sync_status.finalized_l2.number - i - 1).await?;
 
-        let fetcher = Fetcher::new(global_kv_store.clone(), l1_provider.clone(), blob_provider.clone(), l2_provider.clone(), agreed_l2_hash);
-        let fetcher = Arc::new(fetcher);
         let (sender, mut receiver) = tokio::sync::mpsc::unbounded_channel::<(String, oneshot::Sender<bool>)>();
         let fetcher_for_task = fetcher.clone();
         let hinter = tokio::spawn(async move {
@@ -73,7 +73,9 @@ async fn main() -> anyhow::Result<()>{
                         sender.send(false).unwrap();
                         continue;
                     }
-                    fetcher_for_task.prefetch(&hint).await.unwrap();
+                    if let Err(err) = fetcher_for_task.prefetch(&hint).await  {
+                        tracing::error!("prefetch failed hint = {}, err = {}", hint, err);
+                    }
                     hints.push(hint);
                     let _ = sender.send(true);
                 }else {
@@ -82,7 +84,7 @@ async fn main() -> anyhow::Result<()>{
             }
             return hints
         });
-        let oracle = PreimageIO::new(fetcher, sender);
+        let oracle = PreimageIO::new(fetcher.clone(), sender);
         tracing::info!("start derivation claiming number = {}", claiming_l2_number);
         Derivation::new(
             sync_status.finalized_l1.hash,

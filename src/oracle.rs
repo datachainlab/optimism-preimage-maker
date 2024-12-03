@@ -64,13 +64,13 @@ impl <KV> HintWriterClient for PreimageIO<KV> where
     KV: KeyValueStore + ?Sized + Send + Sync
 {
     async fn write(&self, hint: &str) -> PreimageOracleResult<()> {
-        let (sender, mut receiver) = oneshot::channel();
+        //let (sender, mut receiver) = oneshot::channel();
 
-        self.sender.send((hint.to_string(), sender))
-            .map_err(|e| PreimageOracleError::Other(e.to_string()))?;
+        //self.sender.send((hint.to_string(), sender))
+         //   .map_err(|e| PreimageOracleError::Other(e.to_string()))?;
 
-        let result = receiver.await.map_err(|e| PreimageOracleError::Other(e.to_string()))?;
-        //self.fetcher.prefetch(hint).await.map_err(|e| PreimageOracleError::Other(e.to_string()))?;
+        //let result = receiver.await.map_err(|e| PreimageOracleError::Other(e.to_string()))?;
+        self.fetcher.prefetch(hint).await.map_err(|e| PreimageOracleError::Other(e.to_string()))?;
         Ok(())
     }
 }

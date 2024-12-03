@@ -35,8 +35,6 @@ where
     blob_provider: OnlineBlobProvider<OnlineBeaconClient>,
     /// L2 chain provider.
     l2_provider: ReqwestProvider,
-    /// L2 head
-    l2_head: B256,
 }
 
 impl<KV> Fetcher<KV>
@@ -49,9 +47,8 @@ where
         l1_provider: ReqwestProvider,
         blob_provider: OnlineBlobProvider<OnlineBeaconClient>,
         l2_provider: ReqwestProvider,
-        l2_head: B256,
     ) -> Self {
-        Self { kv_store, l1_provider, blob_provider, l2_provider, l2_head }
+        Self { kv_store, l1_provider, blob_provider, l2_provider }
     }
 
     pub async fn get_preimage(&self, key: PreimageKey) -> Result<Vec<u8>> {
@@ -341,15 +338,19 @@ where
                 const L2_TO_L1_MESSAGE_PASSER_ADDRESS: Address =
                     address!("4200000000000000000000000000000000000016");
 
-                if hint_data.len() != 32 {
-                    anyhow::bail!("Invalid hint data length: {}", hint_data.len());
+                // ------------------- Modify original fetcher/mod.rs
+                if hint_data.len() != 32 + 32 {
+                    anyhow::bail!("Invalid hint data length l2: {}", hint_data.len());
                 }
+                let hint_output_root = &hint_data[0..32];
+                let l2_head= B256::from_slice(&hint_data[32..]);
+                // ------------------- Modify original fetcher/mod.rs
 
                 // Fetch the header for the L2 head block.
                 let raw_header: Bytes = self
                     .l2_provider
                     .client()
-                    .request("debug_getRawHeader", &[self.l2_head])
+                    .request("debug_getRawHeader", &[l2_head])
                     .await
                     .map_err(|e| anyhow!("Failed to fetch header RLP: {e}"))?;
                 let header = Header::decode(&mut raw_header.as_ref())
@@ -359,7 +360,7 @@ where
                 let l2_to_l1_message_passer = self
                     .l2_provider
                     .get_proof(L2_TO_L1_MESSAGE_PASSER_ADDRESS, Default::default())
-                    .block_id(BlockId::Hash(self.l2_head.into()))
+                    .block_id(BlockId::Hash(l2_head.into()))
                     .await
                     .map_err(|e| anyhow!("Failed to fetch account proof: {e}"))?;
 
@@ -367,10 +368,10 @@ where
                 raw_output[31] = OUTPUT_ROOT_VERSION;
                 raw_output[32..64].copy_from_slice(header.state_root.as_ref());
                 raw_output[64..96].copy_from_slice(l2_to_l1_message_passer.storage_hash.as_ref());
-                raw_output[96..128].copy_from_slice(self.l2_head.as_ref());
+                raw_output[96..128].copy_from_slice(l2_head.as_ref());
                 let output_root = keccak256(raw_output);
 
-                if output_root.as_slice() != hint_data.as_ref() {
+                if output_root.as_slice() != hint_output_root.as_ref() {
                     anyhow::bail!("Output root does not match L2 head.");
                 }
 
