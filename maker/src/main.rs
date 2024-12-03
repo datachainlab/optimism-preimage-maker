@@ -59,12 +59,12 @@ fn main() -> anyhow::Result<()>{
         tracing::info!("start derivation claiming number = {}", claiming_l2_number);
         kona_common::block_on(async move {
             Derivation::new(
-            sync_status.finalized_l1.hash,
-            agreed_l2_hash,
-            agreed_output_root,
-            claiming_l2_hash,
-            claiming_output_root,
-            claiming_l2_number
+                sync_status.finalized_l1.hash,
+                agreed_l2_hash,
+                agreed_output_root,
+                claiming_l2_hash,
+                claiming_output_root,
+                claiming_l2_number
             ).verify(config.l2_chain_id, &rollup_config, oracle.clone()).await
         })?;
         tracing::info!("end derivation claiming number = {}", claiming_l2_number);

@@ -33,13 +33,6 @@ pub struct Config {
         default_value="http://localhost:8545"
     )]
     pub l1_node_address: String,
-    /// Address of the L1 Beacon API endpoint to use.
-    #[clap(
-        long,
-        visible_alias = "beacon",
-        default_value="http://localhost:5052"
-    )]
-    pub l1_beacon_address: String,
     /// The L2 chain ID of a supported chain. If provided, the host will look for the corresponding
     /// rollup config in the superchain registry.
     #[clap(
@@ -51,6 +44,7 @@ pub struct Config {
     /// look up the config in the superchain registry.
     #[clap(
         long,
+        default_value = "../optimism/.devnet/rollup.json",
     )]
     pub rollup_config_path: Option<PathBuf>,
 }

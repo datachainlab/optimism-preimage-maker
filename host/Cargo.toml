@@ -4,5 +4,49 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
+optimism-derivation = {workspace = true}
+
+os_pipe = "1.2.1"
 tokio = { version="1.41", features=["full"] }
+command-fds = { version = "0.3", features = ["tokio"] }
+futures = { version = "0.3.30", default-features = false }
+
+serde = {workspace = true}
+serde_json = {workspace = true}
+async-trait = {workspace = true}
+anyhow = {workspace = true}
+thiserror = {workspace = true}
+clap = {workspace = true}
+tracing ={ workspace = true }
+tracing-subscriber = {workspace = true}
+
+# Kona
 kona-host = { workspace = true }
+kona-mpt = {workspace = true}
+kona-client = {workspace = true}
+kona-common = {workspace = true}
+kona-derive = {workspace = true}
+kona-preimage = {workspace = true}
+kona-executor = {workspace = true}
+kona-common-proc = {workspace = true}
+kona-derive-alloy = {workspace = true}
+
+# Alloy
+alloy-rlp = {workspace = true}
+alloy-trie ={workspace = true}
+alloy-eips = {workspace = true}
+alloy-serde ={workspace = true}
+alloy-provider ={workspace = true}
+alloy-consensus ={workspace = true}
+alloy-transport = {workspace = true}
+alloy-rpc-types = {workspace = true}
+alloy-rpc-client ={workspace = true}
+alloy-node-bindings = {workspace = true}
+alloy-transport-http = {workspace = true}
+alloy-rpc-types-engine = {workspace = true}
+alloy-rpc-types-beacon = {workspace = true}
+alloy-primitives = { workspace = true, features = ["serde"] }
+
+# OP Alloy
+op-alloy-genesis = { workspace = true, features = ["std", "serde"] }
+op-alloy-protocol = { workspace = true, features = ["std", "serde"] }
