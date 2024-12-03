@@ -1,15 +1,10 @@
 use std::path::PathBuf;
-use std::sync::{Arc};
 use alloy_provider::ReqwestProvider;
 use alloy_rpc_client::RpcClient;
 use alloy_transport_http::Http;
-use anyhow::{anyhow, Result};
 use clap::Parser;
-use kona_derive_alloy::{OnlineBeaconClient, OnlineBlobProvider};
-use kona_host::kv::{DiskKeyValueStore, LocalKeyValueStore, MemoryKeyValueStore, SharedKeyValueStore, SplitKeyValueStore};
 use reqwest::Client;
 use serde::Serialize;
-use tokio::sync::RwLock;
 
 const ABOUT: &str = "
 optimism-preimage-maker is a CLI application that runs the Kona derivation.
@@ -60,45 +55,4 @@ pub struct Config {
     pub rollup_config_path: Option<PathBuf>,
 }
 
-impl Config {
 
-    pub async fn create_providers(
-        &self,
-    ) -> Result<(
-        ReqwestProvider,
-        OnlineBlobProvider<OnlineBeaconClient>,
-        ReqwestProvider,
-    )> {
-        let beacon_client = OnlineBeaconClient::new_http(
-            self.l1_beacon_address.clone()
-        );
-        let mut blob_provider = OnlineBlobProvider::new(beacon_client, None, None);
-        blob_provider
-            .load_configs()
-            .await
-            .map_err(|e| anyhow!("Failed to load blob provider configuration: {e}"))?;
-        let l1_provider = http_provider(
-            &self.l1_node_address
-        );
-        let l2_provider = http_provider(
-            &self.l2_node_address
-        );
-
-        Ok((l1_provider, blob_provider, l2_provider))
-    }
-
-    pub fn construct_kv_store(&self) -> SharedKeyValueStore {
-        let kv_store= DiskKeyValueStore::new(".data/remote".into());
-        //let mem_kv_store = MemoryKeyValueStore::new();
-        let kv_store: SharedKeyValueStore = Arc::new(RwLock::new(kv_store));
-        kv_store
-    }
-}
-
-
-
-fn http_provider(url: &str) -> ReqwestProvider {
-    let url = url.parse().unwrap();
-    let http = Http::<Client>::new(url);
-    ReqwestProvider::new(RpcClient::new(http, true))
-}

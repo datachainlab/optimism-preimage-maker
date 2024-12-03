@@ -1,0 +1,48 @@
+[package]
+name = "optimism-preimage-maker"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+optimism-derivation = {workspace = true}
+
+async-trait = {workspace = true}
+anyhow = {workspace = true}
+thiserror = {workspace = true}
+hashbrown = {workspace = true}
+serde = {workspace = true}
+serde_json = {workspace = true}
+reqwest = {workspace = true}
+clap = {workspace = true}
+tracing ={ workspace = true }
+tracing-subscriber = {workspace = true}
+
+# Kona
+kona-mpt = {workspace = true}
+kona-client = {workspace = true}
+kona-common = {workspace = true}
+kona-derive = {workspace = true}
+kona-preimage = {workspace = true}
+kona-executor = {workspace = true}
+kona-common-proc = {workspace = true}
+kona-derive-alloy = {workspace = true}
+
+# Alloy
+alloy-rlp = {workspace = true}
+alloy-trie ={workspace = true}
+alloy-eips = {workspace = true}
+alloy-serde ={workspace = true}
+alloy-provider ={workspace = true}
+alloy-primitives = {workspace = true}
+alloy-consensus ={workspace = true}
+alloy-transport = {workspace = true}
+alloy-rpc-types = {workspace = true}
+alloy-rpc-client ={workspace = true}
+alloy-node-bindings = {workspace = true}
+alloy-transport-http = {workspace = true}
+alloy-rpc-types-engine = {workspace = true}
+alloy-rpc-types-beacon = {workspace = true}
+
+# OP Alloy
+op-alloy-genesis = {workspace = true}
+op-alloy-protocol = {workspace = true}

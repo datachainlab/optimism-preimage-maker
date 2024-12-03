@@ -1,18 +1,20 @@
-[package]
-name = "optimism-preimage-maker"
-version = "0.1.0"
-edition = "2021"
+[workspace]
+resolver = "2"
+members = [
+    "host",
+    "maker",
+]
 
-[dependencies]
+[workspace.dependencies]
 optimism-derivation = { path="../optimism-elc/derivation", version = "0.1.0", default-features = false }
-tokio = { version="1.41", features=["full"] }
+
 async-trait = "0.1"
 anyhow = "1.0"
 thiserror = "2.0"
 hashbrown = "0.15.1"
 serde = { version = "1.0.210", default-features = false, features = ["derive"] }
 serde_json = { version = "1.0.128", default-features = false }
-reqwest = "0.12"
+reqwest = { version="0.12", features = ["blocking"] }
 clap = { version = "4.5.18", features = ["derive", "env"] }
 tracing = { version = "0.1", default-features = false }
 tracing-subscriber = { version = "0.3", features = ["fmt", "env-filter"] }

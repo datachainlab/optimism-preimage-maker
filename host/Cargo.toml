@@ -1,0 +1,8 @@
+[package]
+name = "optimism-preimage-host"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+tokio = { version="1.41", features=["full"] }
+kona-host = { workspace = true }
