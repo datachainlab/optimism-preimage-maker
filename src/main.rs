@@ -1,3 +1,4 @@
+#![feature(const_trait_impl)]
 extern crate core;
 
 use std::sync::Arc;
@@ -68,6 +69,10 @@ async fn main() -> anyhow::Result<()>{
         let (hint_channel,hint_server) = start_hint_server(hint_cache, fetcher.clone());
 
         let oracle = PreimageIO::new(hint_channel, global_kv_store.clone());
+        /*
+        let fetcher = Fetcher::new(global_kv_store.clone(), l1_provider.clone(), blob_provider.clone(), l2_provider.clone(), agreed_l2_hash);;
+        let oracle = PreimageIO::new(Arc::new(fetcher));
+         */
         tracing::info!("start derivation claiming number = {}", claiming_l2_number);
         Derivation::new(
             sync_status.finalized_l1.hash,
