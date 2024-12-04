@@ -2,9 +2,11 @@
 extern crate core;
 
 use std::sync::Arc;
+use std::time::Duration;
 use optimism_derivation::derivation::Derivation;
 use clap::Parser;
 use kona_client::CachingOracle;
+use kona_common_proc::client_entry;
 use op_alloy_genesis::RollupConfig;
 use serde::Serialize;
 use tokio::sync::{oneshot, RwLock, };
@@ -43,48 +45,52 @@ async fn main() -> anyhow::Result<()>{
         }
     };
 
-    // TODO last saved
 
     let global_kv_store = config.construct_kv_store();
     let (l1_provider, blob_provider, l2_provider) = config.create_providers().await?;
 
     let l2_client = L2Client::new(config.l2_rollup_node_address.clone(), config.l2_node_address.clone());
-    let sync_status = l2_client.sync_status().await?;
 
-    let mut hint_cache : Vec<String> = Vec::new();
-    for n in 0..10 {
-        let i = 10 - n;
+    let mut hint_cache: Vec<String> = Vec::new();
+    loop {
+        let sync_status = l2_client.sync_status().await?;
+        for n in 0..10 {
+            // TODO last saved
+            let i = 10 - n;
 
-        let claiming_l2_number = sync_status.finalized_l2.number - i;
+            let claiming_l2_number = sync_status.finalized_l2.number - i;
 
-        let claiming_l2_hash= l2_client.get_block_by_number(claiming_l2_number).await?.hash;
-        let claiming_output_root = l2_client.output_root_at(claiming_l2_number).await?;
+            let claiming_l2_hash = l2_client.get_block_by_number(claiming_l2_number).await?.hash;
+            let claiming_output_root = l2_client.output_root_at(claiming_l2_number).await?;
 
-        let agreed_l2_hash= l2_client.get_block_by_number(sync_status.finalized_l2.number - i - 1).await?.hash;
-        let agreed_output_root = l2_client.output_root_at(sync_status.finalized_l2.number - i - 1).await?;
+            let agreed_l2_hash = l2_client.get_block_by_number(sync_status.finalized_l2.number - i - 1).await?.hash;
+            let agreed_output_root = l2_client.output_root_at(sync_status.finalized_l2.number - i - 1).await?;
 
-        let fetcher = Fetcher::new(global_kv_store.clone(), l1_provider.clone(), blob_provider.clone(), l2_provider.clone(), agreed_l2_hash);
-        let fetcher = Arc::new(fetcher);
+            let fetcher = Fetcher::new(global_kv_store.clone(), l1_provider.clone(), blob_provider.clone(), l2_provider.clone(), agreed_l2_hash);
+            let fetcher = Arc::new(fetcher);
 
-        let (hint_channel,hint_server) = start_hint_server(hint_cache, fetcher.clone());
+            let (hint_channel, hint_server) = start_hint_server(hint_cache, fetcher.clone());
 
-        let oracle = PreimageIO::new(hint_channel, global_kv_store.clone());
-        /*
-        let fetcher = Fetcher::new(global_kv_store.clone(), l1_provider.clone(), blob_provider.clone(), l2_provider.clone(), agreed_l2_hash);;
-        let oracle = PreimageIO::new(Arc::new(fetcher));
-         */
-        tracing::info!("start derivation claiming number = {}", claiming_l2_number);
-        Derivation::new(
-            sync_status.finalized_l1.hash,
-            agreed_l2_hash,
-            agreed_output_root,
-            claiming_l2_hash,
-            claiming_output_root,
-            claiming_l2_number
-        ).verify(config.l2_chain_id, &rollup_config, Arc::new(oracle)).await?;
-        tracing::info!("end derivation claiming number = {}", claiming_l2_number);
+            let oracle = PreimageIO::new(hint_channel, global_kv_store.clone());
+            /*
+            let fetcher = Fetcher::new(global_kv_store.clone(), l1_provider.clone(), blob_provider.clone(), l2_provider.clone(), agreed_l2_hash);;
+            let oracle = PreimageIO::new(Arc::new(fetcher));
+             */
+            tracing::info!("start derivation claiming number = {}", claiming_l2_number);
+            Derivation::new(
+                sync_status.finalized_l1.hash,
+                agreed_l2_hash,
+                agreed_output_root,
+                claiming_l2_hash,
+                claiming_output_root,
+                claiming_l2_number
+            ).verify(config.l2_chain_id, &rollup_config, Arc::new(oracle)).await?;
+            tracing::info!("end derivation claiming number = {}", claiming_l2_number);
 
-        hint_cache = hint_server.await?;
+            hint_cache = hint_server.await?;
+        }
+
+        tokio::time::sleep(Duration::from_secs(20)).await;
     }
 
     Ok(())
