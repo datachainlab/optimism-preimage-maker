@@ -139,7 +139,6 @@ impl L2Client {
             params: vec![format!("0x{:X}", number).into(), false.into()],
             ..Default::default()
         };
-        tracing::info!("body: {:?}", body);
         let response  = client
             .post(&self.op_geth_addr)
             .header("Content-Type", "application/json")

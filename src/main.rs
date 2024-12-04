@@ -54,7 +54,7 @@ async fn main() -> anyhow::Result<()>{
 
     let mut hints = Vec::new();
     for n in 0..10 {
-        let i = 1;
+        let i = 10 - n;
 
         let claiming_l2_number = sync_status.finalized_l2.number - i;
 
