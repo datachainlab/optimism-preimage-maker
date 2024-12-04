@@ -1,28 +1,28 @@
 extern crate core;
 
-use std::sync::{Arc, Mutex};
+use std::sync::Arc;
 use optimism_derivation::derivation::Derivation;
 use clap::Parser;
 use kona_client::CachingOracle;
 use op_alloy_genesis::RollupConfig;
 use serde::Serialize;
-use tokio::sync::{oneshot, RwLock};
+use tokio::sync::{oneshot, RwLock, };
 use tracing::Level;
 use tracing::metadata::LevelFilter;
 use tracing_subscriber::filter;
 use tracing_subscriber::layer::SubscriberExt;
 use tracing_subscriber::util::SubscriberInitExt;
 use crate::config::Config;
-use crate::fetcher::Fetcher;
 use crate::l2::client::L2Client;
-use crate::oracle::PreimageIO;
+use crate::oracle::write_through::client::PreimageIO;
+use crate::oracle::write_through::fetcher::Fetcher;
+use crate::oracle::write_through::server::start_hint_server;
 
-mod oracle;
 mod l2;
 mod config;
-mod fetcher;
+mod oracle;
 
-#[tokio::main]
+#[tokio::main(flavor = "multi_thread", worker_threads = 10)]
 async fn main() -> anyhow::Result<()>{
     let config = Config::parse();
 
@@ -42,17 +42,15 @@ async fn main() -> anyhow::Result<()>{
         }
     };
 
-    let l2_client = L2Client::new(config.l2_rollup_node_address.clone(), config.l2_node_address.clone());
-    let sync_status = l2_client.sync_status().await?;
-
     // TODO last saved
 
     let global_kv_store = config.construct_kv_store();
     let (l1_provider, blob_provider, l2_provider) = config.create_providers().await?;
-    let fetcher = Fetcher::new(global_kv_store.clone(), l1_provider.clone(), blob_provider.clone(), l2_provider.clone());
-    let fetcher = Arc::new(fetcher);
 
-    let mut hints = Vec::new();
+    let l2_client = L2Client::new(config.l2_rollup_node_address.clone(), config.l2_node_address.clone());
+    let sync_status = l2_client.sync_status().await?;
+
+    let mut hint_cache : Vec<String> = Vec::new();
     for n in 0..10 {
         let i = 10 - n;
 
@@ -64,27 +62,12 @@ async fn main() -> anyhow::Result<()>{
         let agreed_l2_hash= l2_client.get_block_by_number(sync_status.finalized_l2.number - i - 1).await?.hash;
         let agreed_output_root = l2_client.output_root_at(sync_status.finalized_l2.number - i - 1).await?;
 
-        let (sender, mut receiver) = tokio::sync::mpsc::unbounded_channel::<(String, oneshot::Sender<bool>)>();
-        let fetcher_for_task = fetcher.clone();
-        let hinter = tokio::spawn(async move {
-            loop {
-                if let Some((hint ,sender)) = receiver.recv().await {
-                    if hints.contains(&hint) {
-                        sender.send(false).unwrap();
-                        continue;
-                    }
-                    if let Err(err) = fetcher_for_task.prefetch(&hint).await  {
-                        tracing::error!("prefetch failed hint = {}, err = {}", hint, err);
-                    }
-                    hints.push(hint);
-                    let _ = sender.send(true);
-                }else {
-                    break
-                }
-            }
-            return hints
-        });
-        let oracle = PreimageIO::new(fetcher.clone(), sender);
+        let fetcher = Fetcher::new(global_kv_store.clone(), l1_provider.clone(), blob_provider.clone(), l2_provider.clone(), agreed_l2_hash);
+        let fetcher = Arc::new(fetcher);
+
+        let (hint_channel,hint_server) = start_hint_server(hint_cache, fetcher.clone());
+
+        let oracle = PreimageIO::new(hint_channel, global_kv_store.clone());
         tracing::info!("start derivation claiming number = {}", claiming_l2_number);
         Derivation::new(
             sync_status.finalized_l1.hash,
@@ -96,7 +79,7 @@ async fn main() -> anyhow::Result<()>{
         ).verify(config.l2_chain_id, &rollup_config, Arc::new(oracle)).await?;
         tracing::info!("end derivation claiming number = {}", claiming_l2_number);
 
-        hints = hinter.await?;
+        hint_cache = hint_server.await?;
     }
 
     Ok(())
