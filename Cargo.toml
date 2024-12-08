@@ -48,3 +48,5 @@ alloy-rpc-types-beacon = { version = "0.5.4", default-features = false }
 # OP Alloy
 op-alloy-genesis = { version = "0.5.2", default-features = false, features = ["serde"] }
 op-alloy-protocol = { version = "0.5.2", default-features = false }
+lru = "0.12.5"
+spin = "0.9.8"
