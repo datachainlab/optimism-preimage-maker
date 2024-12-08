@@ -5,8 +5,9 @@ use std::sync::Arc;
 use std::time::Duration;
 use optimism_derivation::derivation::Derivation;
 use clap::Parser;
-use kona_client::CachingOracle;
 use kona_common_proc::client_entry;
+use kona_preimage::PreimageKey;
+use lru::LruCache;
 use op_alloy_genesis::RollupConfig;
 use serde::Serialize;
 use tokio::sync::{oneshot, RwLock, };
@@ -17,15 +18,16 @@ use tracing_subscriber::layer::SubscriberExt;
 use tracing_subscriber::util::SubscriberInitExt;
 use crate::config::Config;
 use crate::l2::client::L2Client;
-use crate::oracle::write_through::client::PreimageIO;
-use crate::oracle::write_through::fetcher::Fetcher;
-use crate::oracle::write_through::server::start_hint_server;
+use crate::oracle::lockfree::client::PreimageIO;
+use crate::oracle::lockfree::fetcher::Fetcher;
+use crate::oracle::lockfree::server::{start_hint_server, start_preimage_server};
+use crate::oracle::new_cache;
 
 mod l2;
 mod config;
 mod oracle;
 
-#[tokio::main(flavor = "multi_thread", worker_threads = 10)]
+#[tokio::main]
 async fn main() -> anyhow::Result<()>{
     let config = Config::parse();
 
@@ -51,7 +53,14 @@ async fn main() -> anyhow::Result<()>{
 
     let l2_client = L2Client::new(config.l2_rollup_node_address.clone(), config.l2_node_address.clone());
 
-    let mut hint_cache: Vec<String> = Vec::new();
+    let cache = new_cache();
+    let fetcher = Fetcher::new(global_kv_store.clone(), l1_provider.clone(), blob_provider.clone(), l2_provider.clone());
+    let fetcher = Arc::new(RwLock::new(fetcher));
+
+    let (hint_channel, hint_server) = start_hint_server(fetcher.clone());
+    let (preimage_channel, preimage_server) = start_preimage_server(fetcher.clone());
+    let oracle = Arc::new(PreimageIO::new(cache.clone(), hint_channel, preimage_channel));
+
     loop {
         let sync_status = l2_client.sync_status().await?;
         for n in 0..10 {
@@ -66,12 +75,6 @@ async fn main() -> anyhow::Result<()>{
             let agreed_l2_hash = l2_client.get_block_by_number(sync_status.finalized_l2.number - i - 1).await?.hash;
             let agreed_output_root = l2_client.output_root_at(sync_status.finalized_l2.number - i - 1).await?;
 
-            let fetcher = Fetcher::new(global_kv_store.clone(), l1_provider.clone(), blob_provider.clone(), l2_provider.clone(), agreed_l2_hash);
-            let fetcher = Arc::new(fetcher);
-
-            let (hint_channel, hint_server) = start_hint_server(hint_cache, fetcher.clone());
-
-            let oracle = PreimageIO::new(hint_channel, global_kv_store.clone());
             /*
             let fetcher = Fetcher::new(global_kv_store.clone(), l1_provider.clone(), blob_provider.clone(), l2_provider.clone(), agreed_l2_hash);;
             let oracle = PreimageIO::new(Arc::new(fetcher));
@@ -84,10 +87,9 @@ async fn main() -> anyhow::Result<()>{
                 claiming_l2_hash,
                 claiming_output_root,
                 claiming_l2_number
-            ).verify(config.l2_chain_id, &rollup_config, Arc::new(oracle)).await?;
+            ).verify(config.l2_chain_id, &rollup_config, oracle.clone()).await?;
             tracing::info!("end derivation claiming number = {}", claiming_l2_number);
 
-            hint_cache = hint_server.await?;
         }
 
         tokio::time::sleep(Duration::from_secs(20)).await;

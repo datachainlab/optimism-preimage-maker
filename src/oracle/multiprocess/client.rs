@@ -3,18 +3,11 @@
 //!
 //! [OracleReader]: kona_preimage::OracleReader
 //! [HintWriter]: kona_preimage::HintWriter
-
-use std::{sync::Arc, vec::Vec};
 use async_trait::async_trait;
-use kona_preimage::{
-    errors::PreimageOracleResult, HintWriterClient, PreimageKey, PreimageOracleClient,
-};
-use lru::LruCache;
-use spin::Mutex;
-
-
 use kona_common::FileDescriptor;
-use kona_preimage::{HintWriter, OracleReader, PipeHandle};
+use kona_preimage::{HintWriter, HintWriterClient, OracleReader, PipeHandle, PreimageKey, PreimageOracleClient};
+use kona_preimage::errors::PreimageOracleResult;
+use crate::oracle::{new_cache, Cache};
 
 /// The global preimage oracle reader pipe.
 static ORACLE_READER_PIPE: PipeHandle =
@@ -38,20 +31,20 @@ pub static HINT_WRITER: HintWriter = HintWriter::new(HINT_WRITER_PIPE);
 /// [HintWriter]: kona_preimage::HintWriter
 #[allow(unreachable_pub)]
 #[derive(Debug, Clone)]
-pub struct CachingOracle<OR, HW>
+pub struct PreimageIO<OR, HW>
 where
     OR: PreimageOracleClient,
     HW: HintWriterClient,
 {
     /// The spin-locked cache that stores the responses from the oracle.
-    pub cache: Arc<Mutex<LruCache<PreimageKey, Vec<u8>>>>,
+    pub cache: Cache,
     /// Oracle reader type.
     oracle_reader: OR,
     /// Hint writer type.
     hint_writer: HW,
 }
 
-impl<OR, HW> CachingOracle<OR, HW>
+impl<OR, HW> PreimageIO<OR, HW>
 where
     OR: PreimageOracleClient,
     HW: HintWriterClient,
@@ -60,9 +53,9 @@ where
     /// responses in the cache.
     ///
     /// [OracleReader]: kona_preimage::OracleReader
-    pub fn new(oracle_reader: OR, hint_writer: HW) -> Self {
+    pub fn new(cache: Cache, oracle_reader: OR, hint_writer: HW) -> Self {
         Self {
-            cache: Arc::new(Mutex::new(LruCache::unbounded())),
+            cache,
             oracle_reader,
             hint_writer,
         }
@@ -70,7 +63,7 @@ where
 }
 
 #[async_trait]
-impl<OR, HW> PreimageOracleClient for CachingOracle<OR, HW>
+impl<OR, HW> PreimageOracleClient for PreimageIO<OR, HW>
 where
     OR: PreimageOracleClient + Sync,
     HW: HintWriterClient + Sync,
@@ -102,7 +95,7 @@ where
 }
 
 #[async_trait]
-impl<OR, HW> HintWriterClient for CachingOracle<OR, HW>
+impl<OR, HW> HintWriterClient for PreimageIO<OR, HW>
 where
     OR: PreimageOracleClient + Sync,
     HW: HintWriterClient + Sync,

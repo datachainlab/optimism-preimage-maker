@@ -1,14 +1,12 @@
 use std::fmt::Debug;
-use std::sync::{Arc, Mutex};
+use std::sync::{Arc, };
 use alloy_primitives::B256;
-use kona_host::fetcher::Fetcher;
 use kona_host::kv::KeyValueStore;
-use kona_preimage::{HintWriterClient, PreimageFetcher, PreimageKey, PreimageOracleClient};
-use kona_preimage::errors::{PreimageOracleError, PreimageOracleResult};
-use tokio::sync::{oneshot, RwLock};
+use kona_preimage::{HintWriterClient, PreimageFetcher, };
+use tokio::sync::{RwLock};
 use tokio::task::JoinHandle;
-use anyhow::Result;
 use crate::oracle::lockfree::{HintSender, PreimageSender};
+use crate::oracle::lockfree::fetcher::Fetcher;
 
 const SERVER_NUM: usize = 1;
 

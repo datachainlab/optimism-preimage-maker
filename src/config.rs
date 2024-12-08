@@ -89,8 +89,8 @@ impl Config {
     }
 
     pub fn construct_kv_store(&self) -> SharedKeyValueStore {
-        //let kv_store= DiskKeyValueStore::new(".data/remote".into());
-        let kv_store = MemoryKeyValueStore::new();
+        let kv_store= DiskKeyValueStore::new(".data/remote".into());
+        //let kv_store = MemoryKeyValueStore::new();
         let kv_store: SharedKeyValueStore = Arc::new(RwLock::new(kv_store));
         kv_store
     }
