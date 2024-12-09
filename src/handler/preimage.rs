@@ -15,7 +15,7 @@ pub struct Preimages {
 #[cfg(test)]
 mod test {
     use prost::Message;
-    use crate::service::preimage::{Preimage, Preimages};
+    use crate::handler::preimage::{Preimage, Preimages};
 
     #[test]
     pub fn test_preimage_encode_decode() {
