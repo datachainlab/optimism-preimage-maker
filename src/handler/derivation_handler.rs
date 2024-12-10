@@ -10,15 +10,14 @@ use serde::{Serialize};
 use crate::handler::DerivationState;
 use crate::handler::oracle::{PreimageIO, PreimageTraceable};
 
-pub async fn derivation<T>(
-    State(state): State<Arc<DerivationState<T>>>,
+pub async fn derivation(
+    State(state): State<Arc<DerivationState>>,
     Json(payload) : Json<Derivation>
 ) -> (StatusCode, Vec<u8>)
-where T: CommsClient + Debug + Send + Sync
 {
 
     // For the sake of collect used preimages.
-    let oracle = Arc::new(PreimageIO::new(state.oracle.clone(), state.oracle.clone()));
+    let oracle = PreimageIO::new(state.oracle.clone());
 
     tracing::info!("start derivation claiming number = {}, request={:?}", payload.l2_block_number, payload);
     let result = payload.verify(state.l2_chain_id, &state.rollup_config, oracle.clone()).await;

@@ -52,3 +52,4 @@ op-alloy-genesis = { version = "0.5.2", default-features = false, features = ["s
 op-alloy-protocol = { version = "0.5.2", default-features = false }
 lru = "0.12.5"
 spin = "0.9.8"
+log = "0.4.22"

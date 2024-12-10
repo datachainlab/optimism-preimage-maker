@@ -7,26 +7,26 @@ use axum::http::StatusCode;
 use kona_preimage::{CommsClient, HintWriterClient, PreimageOracleClient};
 use op_alloy_genesis::RollupConfig;
 use optimism_derivation::derivation::{Derivation, Derivations};
+use crate::oracle::Cache;
 
 mod derivation_handler;
 mod oracle;
 
-pub struct DerivationState<T>
-where T: CommsClient + Debug + Send + Sync
+pub struct DerivationState
 {
-    pub oracle: T,
+    pub oracle: Cache,
     pub rollup_config: RollupConfig,
     pub l2_chain_id: u64
 }
 
-async fn start_server<T>(addr: &str , derivation_state: DerivationState<T>) -> Result<()>
-where T: CommsClient + Debug + Send + Sync + 'static
+pub async fn start_http_server(addr: &str , derivation_state: DerivationState) -> Result<()>
 {
     let app = axum::Router::new()
-        .route("/derivation", post(derivation_handler::derivation::<T>))
+        .route("/derivation", post(derivation_handler::derivation))
         .with_state(Arc::new(derivation_state));
 
     let listener = TcpListener::bind(addr).await?;
+    tracing::info!("listening on {}", addr);
     axum::serve(listener, app).await?;
     Ok(())
 }

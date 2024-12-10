@@ -3,44 +3,33 @@ use std::sync::Arc;
 use alloy_primitives::B256;
 use kona_preimage::{CommsClient, HintWriterClient, PreimageKey, PreimageOracleClient};
 use kona_preimage::errors::PreimageOracleResult;
+use lru::LruCache;
 use prost::Message;
 use spin::Mutex;
+use crate::oracle::Cache;
 
 pub trait PreimageTraceable {
     fn preimages(&self) -> Vec<u8>;
 }
 
 #[derive(Debug, Clone)]
-pub struct PreimageIO<OR, HW>
-where
-    OR: PreimageOracleClient,
-    HW: HintWriterClient,
+pub struct PreimageIO
 {
     used: Arc<Mutex<Preimages>>,
-    /// Oracle reader type.
-    oracle_reader: OR,
-    /// Hint writer type.
-    hint_writer: HW,
+    cache: Arc<spin::Mutex<LruCache<PreimageKey, Vec<u8>>>>,
 }
 
-impl <OR,HW> PreimageIO<OR,HW>
-where
-    OR: PreimageOracleClient,
-    HW: HintWriterClient,
+impl PreimageIO
 {
-    pub fn new(oracle_reader: OR, hint_writer: HW) -> Self {
+    pub fn new(cache: Cache) -> Self {
         Self {
             used: Arc::new(Mutex::new(Preimages::default())),
-            oracle_reader,
-            hint_writer
+            cache,
         }
     }
 }
 
-impl <OR,HW> PreimageTraceable for PreimageIO<OR,HW>
-where
-    OR: PreimageOracleClient,
-    HW: HintWriterClient,
+impl PreimageTraceable for PreimageIO
 {
     fn preimages(&self) -> Vec<u8> {
         let mut buf: Vec<u8> = Vec::new();
@@ -51,32 +40,29 @@ where
 }
 
 #[async_trait::async_trait]
-impl <OR,HW> PreimageOracleClient for PreimageIO<OR,HW>
-where
-    OR: PreimageOracleClient + Sync,
-    HW: HintWriterClient + Sync,
+impl PreimageOracleClient for PreimageIO
 {
     async fn get(&self, key: PreimageKey) -> PreimageOracleResult<Vec<u8>> {
-        let result = self.oracle_reader.get(key).await?;
+        let mut cache_lock = self.cache.lock();
+        let result = cache_lock.get(&key).unwrap();
         self.used.lock().preimages.push(Preimage::new(key, result.clone()));
-        Ok(result)
+        Ok(result.clone())
     }
 
     async fn get_exact(&self, key: PreimageKey, buf: &mut [u8]) -> PreimageOracleResult<()> {
-        self.oracle_reader.get_exact(key, buf).await?;
+        let mut cache_lock = self.cache.lock();
+        let result = cache_lock.get(&key).unwrap();
+        buf.copy_from_slice(result.as_slice());
         self.used.lock().preimages.push(Preimage::new(key, buf.to_vec()));
         Ok(())
     }
 }
 
 #[async_trait::async_trait]
-impl <OR,HW> HintWriterClient for PreimageIO<OR,HW>
-where
-    OR: PreimageOracleClient + Sync,
-    HW: HintWriterClient + Sync,
+impl HintWriterClient for PreimageIO
 {
     async fn write(&self, hint: &str) -> PreimageOracleResult<()> {
-        self.hint_writer.write(hint).await
+        Ok(())
     }
 }
 
