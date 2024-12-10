@@ -23,7 +23,8 @@ async fn start_server<T>(addr: &str , derivation_state: DerivationState<T>) -> R
 where T: CommsClient + Debug + Send + Sync + 'static
 {
     let app = axum::Router::new()
-        .route("/derivation", post(derivation_handler::derivation::<T>));
+        .route("/derivation", post(derivation_handler::derivation::<T>))
+        .with_state(Arc::new(derivation_state));
 
     let listener = TcpListener::bind(addr).await?;
     axum::serve(listener, app).await?;
