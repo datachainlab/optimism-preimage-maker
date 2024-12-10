@@ -7,10 +7,11 @@ use optimism_derivation::derivation::Derivation;
 use clap::Parser;
 use kona_common_proc::client_entry;
 use kona_preimage::PreimageKey;
+use log::error;
 use lru::LruCache;
 use op_alloy_genesis::RollupConfig;
 use serde::Serialize;
-use tokio::sync::{oneshot, RwLock, };
+use tokio::sync::{mpsc, oneshot, RwLock};
 use tracing::{info, Level};
 use tracing::metadata::LevelFilter;
 use tracing_subscriber::filter;
@@ -55,60 +56,79 @@ async fn main() -> anyhow::Result<()>{
 
     let l2_client = L2Client::new(config.l2_rollup_node_address.clone(), config.l2_node_address.clone());
 
-    let cache = new_cache();
-    let fetcher = Fetcher::new(global_kv_store.clone(), l1_provider.clone(), blob_provider.clone(), l2_provider.clone());
-    let fetcher = Arc::new(RwLock::new(fetcher));
+    let (sender, mut receiver) = mpsc::channel::<(Derivation, Option<oneshot::Sender<Vec<u8>>>)>(100);
 
-    let (hint_channel, hint_server) = start_hint_server(fetcher.clone());
-    let (preimage_channel, preimage_server) = start_preimage_server(fetcher.clone());
-    let oracle = PreimageIO::new(cache.clone(), hint_channel, preimage_channel);
-
-    let rollup_config_http = rollup_config.clone();
-    let oracle_for_http= cache.clone();
+    let sender_for_web_server = sender.clone();
     let task = tokio::spawn(async move {
         let derivation_state = DerivationState {
-            oracle: oracle_for_http,
-            rollup_config: rollup_config_http,
-            l2_chain_id: config.l2_chain_id
+            sender: sender_for_web_server,
         };
         let result = start_http_server("0.0.0.0:10080", derivation_state).await;
         tracing::info!("result {:?}", result);
     });
 
-    loop {
-        let sync_status = l2_client.sync_status().await?;
-        info!("sync status {:?}", sync_status);
-        for n in 0..10 {
-            // TODO last saved
-            let i = 10 - n;
 
-            let claiming_l2_number = sync_status.finalized_l2.number - i;
+    let delivery = tokio::spawn(async move {
+        loop {
+            let sync_status = l2_client.sync_status().await.unwrap();
+            //  info!("sync status {:?}", sync_status);
+            for n in 0..10 {
+                // TODO last saved
+                let i = 10 - n;
 
-            let claiming_l2_hash = l2_client.get_block_by_number(claiming_l2_number).await?.hash;
-            let claiming_output_root = l2_client.output_root_at(claiming_l2_number).await?;
+                let claiming_l2_number = sync_status.finalized_l2.number - i;
 
-            let agreed_l2_hash = l2_client.get_block_by_number(sync_status.finalized_l2.number - i - 1).await?.hash;
-            let agreed_output_root = l2_client.output_root_at(sync_status.finalized_l2.number - i - 1).await?;
-            info!("claiming_l2_number = {}, claiming_l2_hash = {}, claiming_output_root = {}, agreed_l2_hash = {}, agreed_output_root = {}",
-                  claiming_l2_number, claiming_l2_hash, claiming_output_root, agreed_l2_hash, agreed_output_root);
-            /*
-            let fetcher = Fetcher::new(global_kv_store.clone(), l1_provider.clone(), blob_provider.clone(), l2_provider.clone(), agreed_l2_hash);;
-            let oracle = PreimageIO::new(Arc::new(fetcher));
-             */
-            tracing::info!("start derivation claiming number = {}", claiming_l2_number);
-            Derivation::new(
-                sync_status.finalized_l1.hash,
-                agreed_l2_hash,
-                agreed_output_root,
-                claiming_l2_hash,
-                claiming_output_root,
-                claiming_l2_number
-            ).verify(config.l2_chain_id, &rollup_config, oracle.clone()).await?;
-            tracing::info!("end derivation claiming number = {}", claiming_l2_number);
+                let claiming_l2_hash = l2_client.get_block_by_number(claiming_l2_number).await.unwrap().hash;
+                let claiming_output_root = l2_client.output_root_at(claiming_l2_number).await.unwrap();
 
+                let agreed_l2_hash = l2_client.get_block_by_number(sync_status.finalized_l2.number - i - 1).await.unwrap().hash;
+                let agreed_output_root = l2_client.output_root_at(sync_status.finalized_l2.number - i - 1).await.unwrap();
+                /*
+                let fetcher = Fetcher::new(global_kv_store.clone(), l1_provider.clone(), blob_provider.clone(), l2_provider.clone(), agreed_l2_hash);;
+                let oracle = PreimageIO::new(Arc::new(fetcher));
+                 */
+                let derivation = Derivation::new(
+                    sync_status.finalized_l1.hash,
+                    agreed_l2_hash,
+                    agreed_output_root,
+                    claiming_l2_hash,
+                    claiming_output_root,
+                    claiming_l2_number
+                );
+                sender.send((derivation, None)).await.unwrap();
+            }
+            tokio::time::sleep(Duration::from_secs(20)).await;
+        }
+    });
+
+    let cache = new_cache();
+    let fetcher = Fetcher::new(global_kv_store.clone(), l1_provider.clone(), blob_provider.clone(), l2_provider.clone());
+    let fetcher = Arc::new(RwLock::new(fetcher));
+    let (hint_channel, hint_server) = start_hint_server(fetcher.clone());
+    let (preimage_channel, preimage_server) = start_preimage_server(fetcher.clone());
+    let oracle = PreimageIO::new(cache.clone(), hint_channel, preimage_channel);
+
+    while let Some((derivation, reply)) = receiver.recv().await {
+        tracing::info!("start derivation {:?}", derivation);
+        match derivation.verify(config.l2_chain_id, &rollup_config, oracle.clone()).await {
+            Ok(_) => {
+                tracing::info!("end derivation claiming number = {}", derivation.l2_block_number);
+                if let Some(reply) = reply{
+                    if let Err(err) = reply.send(vec![]) {
+                        error!("send reply error = {:?}", err);
+                    }
+                };
+            },
+            Err(e) => {
+                tracing::error!("end derivation claiming number = {} with error = {:?}", derivation.l2_block_number, e);
+                if let Some(reply) = reply{
+                    if let Err(err) = reply.send(vec![]) {
+                        error!("send reply error = {:?}", err);
+                    }
+                };
+            }
         }
 
-        tokio::time::sleep(Duration::from_secs(20)).await;
     }
 
     Ok(())

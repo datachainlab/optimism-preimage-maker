@@ -7,6 +7,7 @@ use axum::Json;
 use kona_preimage::{CommsClient, HintWriterClient, PreimageOracleClient};
 use optimism_derivation::derivation::Derivation;
 use serde::{Serialize};
+use tokio::sync::oneshot;
 use crate::handler::DerivationState;
 use crate::handler::oracle::{PreimageIO, PreimageTraceable};
 
@@ -15,21 +16,21 @@ pub async fn derivation(
     Json(payload) : Json<Derivation>
 ) -> (StatusCode, Vec<u8>)
 {
-
-    // For the sake of collect used preimages.
-    let oracle = PreimageIO::new(state.oracle.clone());
-
-    tracing::info!("start derivation claiming number = {}, request={:?}", payload.l2_block_number, payload);
-    let result = payload.verify(state.l2_chain_id, &state.rollup_config, oracle.clone()).await;
+    let (sender, receiver) = oneshot::channel::<Vec<u8>>();
+    let result = state.sender.send((payload, Some(sender))).await;
     match result {
         Ok(_) => {
-            tracing::info!("end derivation claiming number = {}", payload.l2_block_number);
-            let used_preimages = oracle.preimages();
-            tracing::info!("used preimage size : {}", used_preimages.len());
-            (StatusCode::OK, used_preimages)
+            match receiver.await {
+                Ok(result) => {
+                    (StatusCode::OK, result)
+                },
+                Err(e) => {
+                    (StatusCode::INTERNAL_SERVER_ERROR, vec![])
+                }
+            }
         },
         Err(e) => {
-            tracing::error!("end derivation claiming number = {} with error = {:?}", payload.l2_block_number, e);
+            tracing::error!("failed to send derivation request: {:?}", e);
             (StatusCode::INTERNAL_SERVER_ERROR, vec![])
         }
     }

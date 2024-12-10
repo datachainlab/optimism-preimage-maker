@@ -7,6 +7,7 @@ use axum::http::StatusCode;
 use kona_preimage::{CommsClient, HintWriterClient, PreimageOracleClient};
 use op_alloy_genesis::RollupConfig;
 use optimism_derivation::derivation::{Derivation, Derivations};
+use tokio::sync::{mpsc, oneshot};
 use crate::oracle::Cache;
 
 mod derivation_handler;
@@ -14,9 +15,7 @@ mod oracle;
 
 pub struct DerivationState
 {
-    pub oracle: Cache,
-    pub rollup_config: RollupConfig,
-    pub l2_chain_id: u64
+    pub sender: mpsc::Sender<(Derivation, Option<oneshot::Sender<Vec<u8>>>)>,
 }
 
 pub async fn start_http_server(addr: &str , derivation_state: DerivationState) -> Result<()>
