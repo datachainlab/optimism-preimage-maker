@@ -1,8 +1,9 @@
 use std::fmt::Debug;
 use std::sync::Arc;
-use alloy_rlp::Encodable;
+use alloy_primitives::B256;
 use kona_preimage::{CommsClient, HintWriterClient, PreimageKey, PreimageOracleClient};
 use kona_preimage::errors::PreimageOracleResult;
+use prost::Message;
 use spin::Mutex;
 
 pub trait PreimageTraceable {
@@ -10,56 +11,72 @@ pub trait PreimageTraceable {
 }
 
 #[derive(Debug, Clone)]
-pub struct PreimageIO<T>
-where T: CommsClient + Debug + Send + Sync
+pub struct PreimageIO<OR, HW>
+where
+    OR: PreimageOracleClient,
+    HW: HintWriterClient,
 {
-    used: Arc<Mutex<Vec<Preimage>>>,
-    inner: Arc<T>
+    used: Arc<Mutex<Preimages>>,
+    /// Oracle reader type.
+    oracle_reader: OR,
+    /// Hint writer type.
+    hint_writer: HW,
 }
 
-impl <T> PreimageIO<T>
-where T: CommsClient+ Debug + Send + Sync
+impl <OR,HW> PreimageIO<OR,HW>
+where
+    OR: PreimageOracleClient,
+    HW: HintWriterClient,
 {
-    pub fn new(inner: Arc<T>) -> Self {
+    pub fn new(oracle_reader: OR, hint_writer: HW) -> Self {
         Self {
-            used: Arc::new(Mutex::new(Vec::new())),
-            inner
+            used: Arc::new(Mutex::new(Preimages::default())),
+            oracle_reader,
+            hint_writer
         }
     }
 }
 
-impl <T> PreimageTraceable for PreimageIO<T>
-where T:CommsClient + Debug + Send + Sync
+impl <OR,HW> PreimageTraceable for PreimageIO<OR,HW>
+where
+    OR: PreimageOracleClient,
+    HW: HintWriterClient,
 {
     fn preimages(&self) -> Vec<u8> {
         let mut buf: Vec<u8> = Vec::new();
-        self.used.lock().encode(&mut buf);
+        let lock = self.used.lock();
+        lock.encode(&mut buf).unwrap();
         buf
     }
 }
 
 #[async_trait::async_trait]
-impl <T> PreimageOracleClient for PreimageIO<T>
-where T:CommsClient+ Debug + Send + Sync
+impl <OR,HW> PreimageOracleClient for PreimageIO<OR,HW>
+where
+    OR: PreimageOracleClient + Sync,
+    HW: HintWriterClient + Sync,
 {
     async fn get(&self, key: PreimageKey) -> PreimageOracleResult<Vec<u8>> {
-        let result = self.inner.get(key).await?;
-        self.used.lock().push(Preimage::new(key, result.clone()));
+        let result = self.oracle_reader.get(key).await?;
+        self.used.lock().preimages.push(Preimage::new(key, result.clone()));
         Ok(result)
     }
 
     async fn get_exact(&self, key: PreimageKey, buf: &mut [u8]) -> PreimageOracleResult<()> {
-        self.inner.get_exact(key, buf).await?;
-        self.used.lock().push(Preimage::new(key, buf.clone()));
+        self.oracle_reader.get_exact(key, buf).await?;
+        self.used.lock().preimages.push(Preimage::new(key, buf.to_vec()));
         Ok(())
     }
 }
 
-impl <T> HintWriterClient for PreimageIO<T>
-where T: CommsClient + Debug + Send + Sync
+#[async_trait::async_trait]
+impl <OR,HW> HintWriterClient for PreimageIO<OR,HW>
+where
+    OR: PreimageOracleClient + Sync,
+    HW: HintWriterClient + Sync,
 {
     async fn write(&self, hint: &str) -> PreimageOracleResult<()> {
-        self.inner.write(hint).await
+        self.hint_writer.write(hint).await
     }
 }
 
@@ -75,7 +92,7 @@ pub struct Preimage {
 impl Preimage {
     pub fn new(key: PreimageKey, data: Vec<u8>) -> Self {
         Self {
-            key: key.into(),
+            key: B256::from(key).0.to_vec(),
             data
         }
     }
