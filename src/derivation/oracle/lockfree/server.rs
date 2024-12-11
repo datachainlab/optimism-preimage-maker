@@ -5,8 +5,8 @@ use kona_host::kv::KeyValueStore;
 use kona_preimage::{HintWriterClient, PreimageFetcher, };
 use tokio::sync::{RwLock};
 use tokio::task::JoinHandle;
-use crate::oracle::lockfree::{HintSender, PreimageSender};
-use crate::oracle::lockfree::fetcher::Fetcher;
+use crate::derivation::oracle::lockfree::fetcher::Fetcher;
+use crate::derivation::oracle::lockfree::{HintSender, PreimageSender};
 
 const SERVER_NUM: usize = 1;
 

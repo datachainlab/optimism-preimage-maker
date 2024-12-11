@@ -6,7 +6,7 @@ use kona_preimage::errors::PreimageOracleResult;
 use lru::LruCache;
 use prost::Message;
 use spin::Mutex;
-use crate::oracle::Cache;
+use crate::derivation::oracle::Cache;
 
 pub trait PreimageTraceable {
     fn preimages(&self) -> Vec<u8>;
@@ -94,7 +94,7 @@ pub struct Preimages {
 #[cfg(test)]
 mod test {
     use prost::Message;
-    use crate::handler::oracle::{Preimage, Preimages};
+    use crate::webapp::oracle::{Preimage, Preimages};
 
     #[test]
     pub fn test_preimage_encode_decode() {

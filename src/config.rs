@@ -59,6 +59,14 @@ pub struct Config {
         default_value="../optimism/.devnet/rollup.json"
     )]
     pub rollup_config_path: Option<PathBuf>,
+
+    /// Path to rollup config. If provided, the host will use this config instead of attempting to
+    /// look up the config in the superchain registry.
+    #[clap(
+        long,
+        default_value="0.0.0.0:10080"
+    )]
+    pub http_server_addr: String,
 }
 
 impl Config {

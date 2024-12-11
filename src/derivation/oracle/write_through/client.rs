@@ -5,7 +5,7 @@ use kona_host::kv::KeyValueStore;
 use kona_preimage::{HintWriterClient, PreimageFetcher, PreimageKey, PreimageOracleClient};
 use kona_preimage::errors::{PreimageOracleError, PreimageOracleResult};
 use tokio::sync::{oneshot, RwLock};
-use crate::oracle::write_through::HintSender;
+use crate::derivation::oracle::write_through::HintSender;
 
 pub struct PreimageIO<KV: KeyValueStore + ?Sized + Send + Sync > {
     kv_store: Arc<RwLock<KV>>,

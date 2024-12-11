@@ -7,7 +7,7 @@ use async_trait::async_trait;
 use kona_common::FileDescriptor;
 use kona_preimage::{HintWriter, HintWriterClient, OracleReader, PipeHandle, PreimageKey, PreimageOracleClient};
 use kona_preimage::errors::PreimageOracleResult;
-use crate::oracle::{new_cache, Cache};
+use crate::derivation::oracle::Cache;
 
 /// The global preimage oracle reader pipe.
 static ORACLE_READER_PIPE: PipeHandle =

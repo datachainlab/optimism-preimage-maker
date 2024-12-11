@@ -5,9 +5,8 @@ use kona_preimage::{HintWriterClient, PreimageFetcher, PreimageKey, PreimageOrac
 use kona_preimage::errors::{PreimageOracleError, PreimageOracleResult};
 use lru::LruCache;
 use tokio::sync::{oneshot, RwLock};
-use tracing::info;
-use crate::oracle::Cache;
-use crate::oracle::lockfree::{HintSender, PreimageSender};
+use crate::derivation::oracle::Cache;
+use crate::derivation::oracle::lockfree::{HintSender, PreimageSender};
 
 #[derive(Clone, Debug)]
 pub struct PreimageIO {

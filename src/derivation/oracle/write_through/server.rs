@@ -2,8 +2,8 @@ use std::fmt::Debug;
 use std::sync::{Arc};
 use kona_host::kv::KeyValueStore;
 use tokio::task::JoinHandle;
-use crate::oracle::write_through::fetcher::Fetcher;
-use crate::oracle::write_through::HintSender;
+use crate::derivation::oracle::write_through::fetcher::Fetcher;
+use crate::derivation::oracle::write_through::HintSender;
 
 pub fn start_hint_server<KV: KeyValueStore + ?Sized + Send + Sync + 'static>(
     mut hint_cache: Vec<String>,

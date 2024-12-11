@@ -8,8 +8,7 @@ use kona_preimage::{CommsClient, HintWriterClient, PreimageOracleClient};
 use optimism_derivation::derivation::Derivation;
 use serde::{Serialize};
 use tokio::sync::oneshot;
-use crate::handler::DerivationState;
-use crate::handler::oracle::{PreimageIO, PreimageTraceable};
+use crate::webapp::DerivationState;
 
 pub async fn derivation(
     State(state): State<Arc<DerivationState>>,

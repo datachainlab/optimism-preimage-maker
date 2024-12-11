@@ -3,7 +3,7 @@ use std::sync::Arc;
 use kona_host::kv::KeyValueStore;
 use kona_preimage::{HintWriterClient, PreimageFetcher, PreimageKey, PreimageOracleClient};
 use kona_preimage::errors::{PreimageOracleError, PreimageOracleResult};
-use crate::oracle::r#unsafe::fetcher::Fetcher;
+use crate::derivation::oracle::r#unsafe::fetcher::Fetcher;
 
 pub struct PreimageIO<KV: KeyValueStore + ?Sized + Send + Sync > {
     fetcher: Arc<Fetcher<KV>>,
