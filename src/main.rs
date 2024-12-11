@@ -1,12 +1,13 @@
 #![feature(const_trait_impl)]
 extern crate core;
 
+use std::fmt::Debug;
 use std::sync::Arc;
 use std::time::Duration;
 use optimism_derivation::derivation::Derivation;
 use clap::Parser;
 use kona_common_proc::client_entry;
-use kona_preimage::PreimageKey;
+use kona_preimage::{CommsClient, PreimageKey};
 use log::error;
 use lru::LruCache;
 use op_alloy_genesis::RollupConfig;
@@ -25,6 +26,7 @@ use crate::derivation::oracle::lockfree::server::{start_hint_server, start_preim
 use crate::derivation::oracle::new_cache;
 use crate::polling::start_polling_task;
 use crate::webapp::start_http_server_task;
+use crate::webapp::oracle::{PreimageTraceable, TracingPreimageIO};
 
 mod config;
 mod polling;
@@ -70,24 +72,30 @@ async fn main() -> anyhow::Result<()>{
 
     while let Some((derivation, reply)) = receiver.recv().await {
         info!("start derivation {:?}", derivation);
-        match derivation.verify(config.l2_chain_id, &rollup_config, oracle.clone()).await {
-            Ok(_) => {
-                info!("end derivation claiming number = {}", derivation.l2_block_number);
-                if let Some(reply) = reply{
+        let result = if let Some(reply) = reply {
+            let oracle = TracingPreimageIO::new(cache.clone());
+            let result = derivation.verify(config.l2_chain_id, &rollup_config, oracle.clone()).await;
+            match result {
+                Ok(v) => {
+                    if let Err(err) = reply.send(oracle.preimages()) {
+                        error!("send reply error = {:?}", err);
+                    }
+                    Ok(v)
+                },
+                Err(e) => {
                     if let Err(err) = reply.send(vec![]) {
                         error!("send reply error = {:?}", err);
                     }
-                };
-            },
-            Err(e) => {
-                tracing::error!("end derivation claiming number = {} with error = {:?}", derivation.l2_block_number, e);
-                if let Some(reply) = reply{
-                    if let Err(err) = reply.send(vec![]) {
-                        error!("send reply error = {:?}", err);
-                    }
-                };
+                    Err(e)
+                }
             }
-        }
+        }else {
+            derivation.verify(config.l2_chain_id, &rollup_config, oracle.clone()).await
+        };
+        match result {
+            Ok(_) => info!("end derivation claiming number = {}", derivation.l2_block_number),
+            Err(e) => tracing::error!("end derivation claiming number = {} with error = {:?}", derivation.l2_block_number, e)
+        };
     }
 
     http_server_task.abort();

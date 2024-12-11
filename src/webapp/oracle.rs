@@ -13,13 +13,13 @@ pub trait PreimageTraceable {
 }
 
 #[derive(Debug, Clone)]
-pub struct PreimageIO
+pub struct TracingPreimageIO
 {
     used: Arc<Mutex<Preimages>>,
     cache: Arc<spin::Mutex<LruCache<PreimageKey, Vec<u8>>>>,
 }
 
-impl PreimageIO
+impl TracingPreimageIO
 {
     pub fn new(cache: Cache) -> Self {
         Self {
@@ -29,7 +29,7 @@ impl PreimageIO
     }
 }
 
-impl PreimageTraceable for PreimageIO
+impl PreimageTraceable for TracingPreimageIO
 {
     fn preimages(&self) -> Vec<u8> {
         let mut buf: Vec<u8> = Vec::new();
@@ -40,7 +40,7 @@ impl PreimageTraceable for PreimageIO
 }
 
 #[async_trait::async_trait]
-impl PreimageOracleClient for PreimageIO
+impl PreimageOracleClient for TracingPreimageIO
 {
     async fn get(&self, key: PreimageKey) -> PreimageOracleResult<Vec<u8>> {
         let mut cache_lock = self.cache.lock();
@@ -59,7 +59,7 @@ impl PreimageOracleClient for PreimageIO
 }
 
 #[async_trait::async_trait]
-impl HintWriterClient for PreimageIO
+impl HintWriterClient for TracingPreimageIO
 {
     async fn write(&self, hint: &str) -> PreimageOracleResult<()> {
         Ok(())

@@ -43,7 +43,7 @@ pub fn start_polling_task(
                 );
                 sender.send((derivation, None)).await.unwrap();
             }
-            tokio::time::sleep(Duration::from_secs(20)).await;
+            tokio::time::sleep(Duration::from_secs(80)).await;
         }
     })
 }

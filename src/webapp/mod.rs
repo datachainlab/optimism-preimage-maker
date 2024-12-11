@@ -13,7 +13,7 @@ use tokio::task::JoinHandle;
 use crate::derivation::ChannelInterface;
 
 mod derivation_handler;
-mod oracle;
+pub mod oracle;
 
 pub struct DerivationState
 {
