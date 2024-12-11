@@ -8,7 +8,7 @@ use crate::derivation::oracle::lockfree::server::{start_hint_server, start_preim
 use crate::derivation::oracle::new_cache;
 use crate::derivation::ChannelInterface;
 use crate::polling::start_polling_task;
-use crate::webapp::oracle::{PreimageTraceable, TracingPreimageIO};
+use crate::webapp::oracle::{TracingPreimageIO};
 use crate::webapp::start_http_server_task;
 use clap::Parser;
 use kona_common_proc::client_entry;
@@ -107,7 +107,7 @@ async fn main() -> anyhow::Result<()> {
             let reply_result = if error {
                 reply.send(vec![])
             } else {
-                reply.send(oracle.preimages())
+                reply.send(oracle.into())
             };
             if let Err(err) = reply_result {
                 error!("failed to send derivation result: {:?}", err);

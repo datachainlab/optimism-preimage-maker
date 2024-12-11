@@ -7,32 +7,35 @@ use prost::Message;
 use spin::Mutex;
 use std::fmt::Debug;
 use std::sync::Arc;
-
-pub trait PreimageTraceable {
-    fn preimages(&self) -> Vec<u8>;
-}
+use hashbrown::HashMap;
 
 #[derive(Debug, Clone)]
 pub struct TracingPreimageIO {
-    //TODO to HashMap
-    used: Arc<Mutex<Preimages>>,
+    used: Arc<Mutex<HashMap<PreimageKey, Vec<u8>>>>,
     cache: Arc<spin::Mutex<LruCache<PreimageKey, Vec<u8>>>>,
 }
 
 impl TracingPreimageIO {
     pub fn new(cache: Cache) -> Self {
         Self {
-            used: Arc::new(Mutex::new(Preimages::default())),
+            used: Arc::new(Mutex::new(HashMap::default())),
             cache,
         }
     }
 }
 
-impl PreimageTraceable for TracingPreimageIO {
-    fn preimages(&self) -> Vec<u8> {
+impl From<TracingPreimageIO> for Vec<u8> {
+    fn from(value: TracingPreimageIO) -> Self {
+        let used = value.used.lock();
+        let mut temp: Vec<Preimage> = Vec::with_capacity(used.len());
+        for (k,v) in used.iter() {
+            temp.push(Preimage::new(k.clone(),v.clone()));
+        }
+        let data = Preimages {
+            preimages: temp,
+        };
         let mut buf: Vec<u8> = Vec::new();
-        let lock = self.used.lock();
-        lock.encode(&mut buf).unwrap();
+        data.encode(&mut buf).unwrap();
         buf
     }
 }
@@ -44,8 +47,7 @@ impl PreimageOracleClient for TracingPreimageIO {
         let result = cache_lock.get(&key).unwrap();
         self.used
             .lock()
-            .preimages
-            .push(Preimage::new(key, result.clone()));
+            .insert(key, result.clone());
         Ok(result.clone())
     }
 
@@ -55,8 +57,7 @@ impl PreimageOracleClient for TracingPreimageIO {
         buf.copy_from_slice(result.as_slice());
         self.used
             .lock()
-            .preimages
-            .push(Preimage::new(key, buf.to_vec()));
+            .insert(key, buf.to_vec());
         Ok(())
     }
 }
