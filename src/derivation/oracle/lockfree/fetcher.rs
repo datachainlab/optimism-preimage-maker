@@ -11,13 +11,13 @@ use alloy_rpc_types::{
 };
 use anyhow::{anyhow, Result};
 use kona_client::HintType;
-use kona_preimage::{PreimageKey, PreimageKeyType};
-use op_alloy_protocol::BlockInfo;
-use std::sync::Arc;
 use kona_derive::sources::IndexedBlobHash;
 use kona_derive_alloy::{OnlineBeaconClient, OnlineBlobProvider};
 use kona_host::kv::KeyValueStore;
+use kona_preimage::{PreimageKey, PreimageKeyType};
+use op_alloy_protocol::BlockInfo;
 use optimism_derivation::precompiles;
+use std::sync::Arc;
 use tokio::sync::RwLock;
 use tracing::trace;
 
@@ -51,7 +51,13 @@ where
         blob_provider: OnlineBlobProvider<OnlineBeaconClient>,
         l2_provider: ReqwestProvider,
     ) -> Self {
-        Self { kv_store, l1_provider, blob_provider, l2_provider, last_hint: None }
+        Self {
+            kv_store,
+            l1_provider,
+            blob_provider,
+            l2_provider,
+            last_hint: None,
+        }
     }
 
     /// Set the last hint to be received.
@@ -183,8 +189,14 @@ where
                 let index = u64::from_be_bytes(index_data_bytes);
                 let timestamp = u64::from_be_bytes(timestamp_data_bytes);
 
-                let partial_block_ref = BlockInfo { timestamp, ..Default::default() };
-                let indexed_hash = IndexedBlobHash { index: index as usize, hash };
+                let partial_block_ref = BlockInfo {
+                    timestamp,
+                    ..Default::default()
+                };
+                let indexed_hash = IndexedBlobHash {
+                    index: index as usize,
+                    hash,
+                };
 
                 // Fetch the blob sidecar from the blob provider.
                 let mut sidecars = self
@@ -328,7 +340,8 @@ where
                             encoded_transactions.push(tx);
                         }
 
-                        self.store_trie_nodes(encoded_transactions.as_slice()).await?;
+                        self.store_trie_nodes(encoded_transactions.as_slice())
+                            .await?;
                     }
                     _ => anyhow::bail!("Only BlockTransactions::Hashes are supported."),
                 };
@@ -367,19 +380,21 @@ where
                 };
 
                 let mut kv_write_lock = self.kv_store.write().await;
-                kv_write_lock
-                    .set(PreimageKey::new(*hash, PreimageKeyType::Keccak256).into(), code.into())?;
+                kv_write_lock.set(
+                    PreimageKey::new(*hash, PreimageKeyType::Keccak256).into(),
+                    code.into(),
+                )?;
             }
             HintType::StartingL2Output => {
                 const OUTPUT_ROOT_VERSION: u8 = 0;
                 const L2_TO_L1_MESSAGE_PASSER_ADDRESS: Address =
                     address!("4200000000000000000000000000000000000016");
 
-                if hint_data.len() != 32  + 32 {
+                if hint_data.len() != 32 + 32 {
                     anyhow::bail!("Invalid hint data length: {}", hint_data.len());
                 }
                 let hint_output_root = &hint_data[0..32];
-                let l2_head= B256::from_slice(&hint_data[32..]);
+                let l2_head = B256::from_slice(&hint_data[32..]);
 
                 // Fetch the header for the L2 head block.
                 let raw_header: Bytes = self
@@ -462,12 +477,15 @@ where
                 let mut kv_write_lock = self.kv_store.write().await;
 
                 // Write the account proof nodes to the key-value store.
-                proof_response.account_proof.into_iter().try_for_each(|node| {
-                    let node_hash = keccak256(node.as_ref());
-                    let key = PreimageKey::new(*node_hash, PreimageKeyType::Keccak256);
-                    kv_write_lock.set(key.into(), node.into())?;
-                    Ok::<(), anyhow::Error>(())
-                })?;
+                proof_response
+                    .account_proof
+                    .into_iter()
+                    .try_for_each(|node| {
+                        let node_hash = keccak256(node.as_ref());
+                        let key = PreimageKey::new(*node_hash, PreimageKeyType::Keccak256);
+                        kv_write_lock.set(key.into(), node.into())?;
+                        Ok::<(), anyhow::Error>(())
+                    })?;
             }
             HintType::L2AccountStorageProof => {
                 if hint_data.len() != 8 + 20 + 32 {
@@ -492,12 +510,15 @@ where
                 let mut kv_write_lock = self.kv_store.write().await;
 
                 // Write the account proof nodes to the key-value store.
-                proof_response.account_proof.into_iter().try_for_each(|node| {
-                    let node_hash = keccak256(node.as_ref());
-                    let key = PreimageKey::new(*node_hash, PreimageKeyType::Keccak256);
-                    kv_write_lock.set(key.into(), node.into())?;
-                    Ok::<(), anyhow::Error>(())
-                })?;
+                proof_response
+                    .account_proof
+                    .into_iter()
+                    .try_for_each(|node| {
+                        let node_hash = keccak256(node.as_ref());
+                        let key = PreimageKey::new(*node_hash, PreimageKeyType::Keccak256);
+                        kv_write_lock.set(key.into(), node.into())?;
+                        Ok::<(), anyhow::Error>(())
+                    })?;
 
                 // Write the storage proof nodes to the key-value store.
                 let storage_proof = proof_response.storage_proof.remove(0);

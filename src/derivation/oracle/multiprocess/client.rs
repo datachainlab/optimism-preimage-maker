@@ -3,11 +3,13 @@
 //!
 //! [OracleReader]: kona_preimage::OracleReader
 //! [HintWriter]: kona_preimage::HintWriter
+use crate::derivation::oracle::Cache;
 use async_trait::async_trait;
 use kona_common::FileDescriptor;
-use kona_preimage::{HintWriter, HintWriterClient, OracleReader, PipeHandle, PreimageKey, PreimageOracleClient};
 use kona_preimage::errors::PreimageOracleResult;
-use crate::derivation::oracle::Cache;
+use kona_preimage::{
+    HintWriter, HintWriterClient, OracleReader, PipeHandle, PreimageKey, PreimageOracleClient,
+};
 
 /// The global preimage oracle reader pipe.
 static ORACLE_READER_PIPE: PipeHandle =
@@ -22,7 +24,6 @@ pub static ORACLE_READER: OracleReader = OracleReader::new(ORACLE_READER_PIPE);
 
 /// The global hint writer.
 pub static HINT_WRITER: HintWriter = HintWriter::new(HINT_WRITER_PIPE);
-
 
 /// A wrapper around an [OracleReader] and [HintWriter] that stores a configurable number of
 /// responses in an [LruCache] for quick retrieval.

@@ -1,26 +1,25 @@
-use std::fmt::Debug;
-use std::sync::Arc;
+use crate::derivation::oracle::Cache;
 use alloy_primitives::B256;
-use kona_preimage::{CommsClient, HintWriterClient, PreimageKey, PreimageOracleClient};
 use kona_preimage::errors::PreimageOracleResult;
+use kona_preimage::{CommsClient, HintWriterClient, PreimageKey, PreimageOracleClient};
 use lru::LruCache;
 use prost::Message;
 use spin::Mutex;
-use crate::derivation::oracle::Cache;
+use std::fmt::Debug;
+use std::sync::Arc;
 
 pub trait PreimageTraceable {
     fn preimages(&self) -> Vec<u8>;
 }
 
 #[derive(Debug, Clone)]
-pub struct TracingPreimageIO
-{
+pub struct TracingPreimageIO {
+    //TODO to HashMap
     used: Arc<Mutex<Preimages>>,
     cache: Arc<spin::Mutex<LruCache<PreimageKey, Vec<u8>>>>,
 }
 
-impl TracingPreimageIO
-{
+impl TracingPreimageIO {
     pub fn new(cache: Cache) -> Self {
         Self {
             used: Arc::new(Mutex::new(Preimages::default())),
@@ -29,8 +28,7 @@ impl TracingPreimageIO
     }
 }
 
-impl PreimageTraceable for TracingPreimageIO
-{
+impl PreimageTraceable for TracingPreimageIO {
     fn preimages(&self) -> Vec<u8> {
         let mut buf: Vec<u8> = Vec::new();
         let lock = self.used.lock();
@@ -40,12 +38,14 @@ impl PreimageTraceable for TracingPreimageIO
 }
 
 #[async_trait::async_trait]
-impl PreimageOracleClient for TracingPreimageIO
-{
+impl PreimageOracleClient for TracingPreimageIO {
     async fn get(&self, key: PreimageKey) -> PreimageOracleResult<Vec<u8>> {
         let mut cache_lock = self.cache.lock();
         let result = cache_lock.get(&key).unwrap();
-        self.used.lock().preimages.push(Preimage::new(key, result.clone()));
+        self.used
+            .lock()
+            .preimages
+            .push(Preimage::new(key, result.clone()));
         Ok(result.clone())
     }
 
@@ -53,19 +53,20 @@ impl PreimageOracleClient for TracingPreimageIO
         let mut cache_lock = self.cache.lock();
         let result = cache_lock.get(&key).unwrap();
         buf.copy_from_slice(result.as_slice());
-        self.used.lock().preimages.push(Preimage::new(key, buf.to_vec()));
+        self.used
+            .lock()
+            .preimages
+            .push(Preimage::new(key, buf.to_vec()));
         Ok(())
     }
 }
 
 #[async_trait::async_trait]
-impl HintWriterClient for TracingPreimageIO
-{
+impl HintWriterClient for TracingPreimageIO {
     async fn write(&self, hint: &str) -> PreimageOracleResult<()> {
         Ok(())
     }
 }
-
 
 #[derive(::prost::Message, Clone, PartialEq)]
 pub struct Preimage {
@@ -79,22 +80,21 @@ impl Preimage {
     pub fn new(key: PreimageKey, data: Vec<u8>) -> Self {
         Self {
             key: B256::from(key).0.to_vec(),
-            data
+            data,
         }
     }
-
 }
 
 #[derive(::prost::Message, Clone, PartialEq)]
 pub struct Preimages {
     #[prost(message, repeated, tag = "1")]
-    pub preimages: Vec<Preimage>
+    pub preimages: Vec<Preimage>,
 }
 
 #[cfg(test)]
 mod test {
-    use prost::Message;
     use crate::webapp::oracle::{Preimage, Preimages};
+    use prost::Message;
 
     #[test]
     pub fn test_preimage_encode_decode() {
@@ -107,7 +107,6 @@ mod test {
 
         let actual = Preimage::decode(&*buf).unwrap();
         assert_eq!(expected, actual);
-
     }
 
     #[test]
@@ -122,13 +121,12 @@ mod test {
                     key: vec![7, 8, 9],
                     data: vec![10, 11, 12],
                 },
-            ]
+            ],
         };
         let mut buf: Vec<u8> = Vec::new();
         expected.encode(&mut buf).unwrap();
 
         let actual = Preimages::decode(&*buf).unwrap();
         assert_eq!(expected, actual);
-
     }
 }

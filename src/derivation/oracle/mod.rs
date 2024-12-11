@@ -1,11 +1,11 @@
-use std::sync::Arc;
 use kona_preimage::PreimageKey;
 use lru::LruCache;
+use std::sync::Arc;
 
-pub mod write_through;
 pub mod lockfree;
-pub mod r#unsafe;
 pub mod multiprocess;
+pub mod r#unsafe;
+pub mod write_through;
 
 pub type Cache = Arc<spin::Mutex<LruCache<PreimageKey, Vec<u8>>>>;
 

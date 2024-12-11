@@ -1,8 +1,6 @@
 //! This module contains the [Fetcher] struct, which is responsible for fetching preimages from a
 //! remote source.
 
-use std::cell::{Cell, Ref, UnsafeCell};
-use std::fmt::Debug;
 use alloy_consensus::{Header, TxEnvelope, EMPTY_ROOT_HASH};
 use alloy_eips::{eip2718::Encodable2718, eip4844::FIELD_ELEMENTS_PER_BLOB, BlockId};
 use alloy_primitives::{address, hex, keccak256, Address, Bytes, B256};
@@ -15,28 +13,30 @@ use anyhow::{anyhow, Result};
 use kona_client::HintType;
 use kona_derive::sources::IndexedBlobHash;
 use kona_derive_alloy::{OnlineBeaconClient, OnlineBlobProvider};
+use kona_host::kv::KeyValueStore;
 use kona_preimage::{PreimageKey, PreimageKeyType};
 use op_alloy_protocol::BlockInfo;
-use std::sync::Arc;
-use kona_host::kv::KeyValueStore;
 use optimism_derivation::precompiles;
+use std::cell::{Cell, Ref, UnsafeCell};
+use std::fmt::Debug;
+use std::sync::Arc;
 use tokio::sync::RwLock;
 use tracing::{error, trace, warn};
 
 pub struct SyncUnsafeCell<T> {
-    value: UnsafeCell<T>
+    value: UnsafeCell<T>,
 }
 
 unsafe impl<T> Sync for SyncUnsafeCell<T> where T: Send {}
 
-impl <T> SyncUnsafeCell<T> {
+impl<T> SyncUnsafeCell<T> {
     pub fn new(value: T) -> Self {
         Self {
-            value: UnsafeCell::new(value)
+            value: UnsafeCell::new(value),
         }
     }
 
-    pub fn get(&self) -> *mut T  {
+    pub fn get(&self) -> *mut T {
         self.value.get()
     }
 }
@@ -60,13 +60,12 @@ where
     last_hint: SyncUnsafeCell<Option<String>>,
 }
 
-impl <KV> Debug  for Fetcher<KV>
+impl<KV> Debug for Fetcher<KV>
 where
     KV: KeyValueStore + ?Sized,
 {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.debug_struct("Fetcher")
-            .finish()
+        f.debug_struct("Fetcher").finish()
     }
 }
 
@@ -82,7 +81,14 @@ where
         l2_provider: ReqwestProvider,
         l2_head: B256,
     ) -> Self {
-        Self { kv_store, l1_provider, blob_provider, l2_provider, l2_head, last_hint: SyncUnsafeCell::new(None) }
+        Self {
+            kv_store,
+            l1_provider,
+            blob_provider,
+            l2_provider,
+            l2_head,
+            last_hint: SyncUnsafeCell::new(None),
+        }
     }
 
     /// Set the last hint to be received.
@@ -90,7 +96,7 @@ where
         trace!(target: "fetcher", "Received hint: {hint}");
         let ptr = self.last_hint.get();
         unsafe {
-           *ptr = Some(hint.to_string());
+            *ptr = Some(hint.to_string());
         }
     }
 
@@ -107,11 +113,9 @@ where
 
         // Use a loop to keep retrying the prefetch as long as the key is not found
         while preimage.is_none() {
-            let hint = unsafe {
-                (*self.last_hint.get()).clone()
-            };
+            let hint = unsafe { (*self.last_hint.get()).clone() };
             if hint.is_none() {
-                break
+                break;
             }
             let hint = hint.unwrap();
 
@@ -218,8 +222,14 @@ where
                 let index = u64::from_be_bytes(index_data_bytes);
                 let timestamp = u64::from_be_bytes(timestamp_data_bytes);
 
-                let partial_block_ref = BlockInfo { timestamp, ..Default::default() };
-                let indexed_hash = IndexedBlobHash { index: index as usize, hash };
+                let partial_block_ref = BlockInfo {
+                    timestamp,
+                    ..Default::default()
+                };
+                let indexed_hash = IndexedBlobHash {
+                    index: index as usize,
+                    hash,
+                };
 
                 // Fetch the blob sidecar from the blob provider.
                 let mut sidecars = self
@@ -363,7 +373,8 @@ where
                             encoded_transactions.push(tx);
                         }
 
-                        self.store_trie_nodes(encoded_transactions.as_slice()).await?;
+                        self.store_trie_nodes(encoded_transactions.as_slice())
+                            .await?;
                     }
                     _ => anyhow::bail!("Only BlockTransactions::Hashes are supported."),
                 };
@@ -402,8 +413,10 @@ where
                 };
 
                 let mut kv_write_lock = self.kv_store.write().await;
-                kv_write_lock
-                    .set(PreimageKey::new(*hash, PreimageKeyType::Keccak256).into(), code.into())?;
+                kv_write_lock.set(
+                    PreimageKey::new(*hash, PreimageKeyType::Keccak256).into(),
+                    code.into(),
+                )?;
             }
             HintType::StartingL2Output => {
                 const OUTPUT_ROOT_VERSION: u8 = 0;
@@ -495,12 +508,15 @@ where
                 let mut kv_write_lock = self.kv_store.write().await;
 
                 // Write the account proof nodes to the key-value store.
-                proof_response.account_proof.into_iter().try_for_each(|node| {
-                    let node_hash = keccak256(node.as_ref());
-                    let key = PreimageKey::new(*node_hash, PreimageKeyType::Keccak256);
-                    kv_write_lock.set(key.into(), node.into())?;
-                    Ok::<(), anyhow::Error>(())
-                })?;
+                proof_response
+                    .account_proof
+                    .into_iter()
+                    .try_for_each(|node| {
+                        let node_hash = keccak256(node.as_ref());
+                        let key = PreimageKey::new(*node_hash, PreimageKeyType::Keccak256);
+                        kv_write_lock.set(key.into(), node.into())?;
+                        Ok::<(), anyhow::Error>(())
+                    })?;
             }
             HintType::L2AccountStorageProof => {
                 if hint_data.len() != 8 + 20 + 32 {
@@ -525,12 +541,15 @@ where
                 let mut kv_write_lock = self.kv_store.write().await;
 
                 // Write the account proof nodes to the key-value store.
-                proof_response.account_proof.into_iter().try_for_each(|node| {
-                    let node_hash = keccak256(node.as_ref());
-                    let key = PreimageKey::new(*node_hash, PreimageKeyType::Keccak256);
-                    kv_write_lock.set(key.into(), node.into())?;
-                    Ok::<(), anyhow::Error>(())
-                })?;
+                proof_response
+                    .account_proof
+                    .into_iter()
+                    .try_for_each(|node| {
+                        let node_hash = keccak256(node.as_ref());
+                        let key = PreimageKey::new(*node_hash, PreimageKeyType::Keccak256);
+                        kv_write_lock.set(key.into(), node.into())?;
+                        Ok::<(), anyhow::Error>(())
+                    })?;
 
                 // Write the storage proof nodes to the key-value store.
                 let storage_proof = proof_response.storage_proof.remove(0);

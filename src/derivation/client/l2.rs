@@ -8,7 +8,7 @@ use serde_json::Value;
 pub struct RpcResult<T> {
     pub jsonrpc: String,
     pub id: i64,
-    pub result: T
+    pub result: T,
 }
 
 #[derive(Debug, Clone, serde::Serialize)]
@@ -16,7 +16,7 @@ struct RpcRequest {
     jsonrpc: String,
     method: String,
     params: Vec<Value>,
-    id: i64
+    id: i64,
 }
 
 impl Default for RpcRequest {
@@ -25,7 +25,7 @@ impl Default for RpcRequest {
             jsonrpc: "2.0".into(),
             method: "".into(),
             params: vec![],
-            id: 1
+            id: 1,
         }
     }
 }
@@ -36,7 +36,7 @@ pub struct L1Header {
     pub number: u64,
     #[serde(rename = "parentHash")]
     pub parent_hash: B256,
-    pub timestamp: u64
+    pub timestamp: u64,
 }
 
 #[derive(Debug, Clone, serde::Deserialize)]
@@ -54,7 +54,7 @@ pub struct L2Header {
     pub timestamp: u64,
     pub l1origin: L1Origin,
     #[serde(rename = "sequenceNumber")]
-    pub sequence_number: u64
+    pub sequence_number: u64,
 }
 
 #[derive(Debug, Clone, serde::Deserialize)]
@@ -83,36 +83,39 @@ pub struct Block {
 
 pub struct L2Client {
     op_node_addr: String,
-    op_geth_addr: String
+    op_geth_addr: String,
 }
 
 impl Default for L2Client {
     fn default() -> Self {
-        Self::new("http://localhost:7545".into(), "http://localhost:9545".into())
+        Self::new(
+            "http://localhost:7545".into(),
+            "http://localhost:9545".into(),
+        )
     }
 }
 
 impl L2Client {
-
     pub fn new(op_node_addr: String, op_geth_addr: String) -> Self {
         Self {
             op_node_addr,
-            op_geth_addr
+            op_geth_addr,
         }
     }
     pub async fn sync_status(&self) -> Result<SyncStatus> {
-
         let client = reqwest::Client::new();
         let body = RpcRequest {
             method: "optimism_syncStatus".into(),
             ..Default::default()
         };
-        let response  = client
+        let response = client
             .post(&self.op_node_addr)
             .header("Content-Type", "application/json")
-            .json(&body).send().await?;
+            .json(&body)
+            .send()
+            .await?;
         let response = self.check_response(response).await?;
-        let result : RpcResult<SyncStatus> = response.json().await?;
+        let result: RpcResult<SyncStatus> = response.json().await?;
         Ok(result.result)
     }
 
@@ -123,12 +126,14 @@ impl L2Client {
             params: vec![format!("0x{:X}", number).into()],
             ..Default::default()
         };
-        let response  = client
+        let response = client
             .post(&self.op_node_addr)
             .header("Content-Type", "application/json")
-            .json(&body).send().await?;
+            .json(&body)
+            .send()
+            .await?;
         let response = self.check_response(response).await?;
-        let result : RpcResult<OutputRootAtBlock> = response.json().await?;
+        let result: RpcResult<OutputRootAtBlock> = response.json().await?;
         Ok(result.result.output_root)
     }
 
@@ -139,12 +144,14 @@ impl L2Client {
             params: vec![format!("0x{:X}", number).into(), false.into()],
             ..Default::default()
         };
-        let response  = client
+        let response = client
             .post(&self.op_geth_addr)
             .header("Content-Type", "application/json")
-            .json(&body).send().await?;
+            .json(&body)
+            .send()
+            .await?;
         let response = self.check_response(response).await?;
-        let result : RpcResult<Block> = response.json().await?;
+        let result: RpcResult<Block> = response.json().await?;
         Ok(result.result)
     }
 
@@ -152,7 +159,11 @@ impl L2Client {
         if response.status().is_success() {
             Ok(response)
         } else {
-            Err(anyhow::anyhow!("Request failed with status: {} body={:?}", response.status(), response.text().await))
+            Err(anyhow::anyhow!(
+                "Request failed with status: {} body={:?}",
+                response.status(),
+                response.text().await
+            ))
         }
     }
 }
@@ -163,7 +174,7 @@ mod test {
 
     #[tokio::test]
     pub async fn test_sync_status() {
-        let client =  L2Client::default();
+        let client = L2Client::default();
         let result = client.sync_status().await.unwrap();
         println!("{:?}", result);
     }
