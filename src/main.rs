@@ -8,7 +8,7 @@ use crate::derivation::oracle::lockfree::server::{start_hint_server, start_preim
 use crate::derivation::oracle::new_cache;
 use crate::derivation::ChannelInterface;
 use crate::polling::start_polling_task;
-use crate::webapp::oracle::{TracingPreimageIO};
+use crate::webapp::oracle::TracingPreimageIO;
 use crate::webapp::start_http_server_task;
 use clap::Parser;
 use kona_common_proc::client_entry;
@@ -81,7 +81,7 @@ async fn main() -> anyhow::Result<()> {
 
     while let Some((derivations, reply)) = receiver.recv().await {
         let result = if let Some(reply) = reply {
-            let oracle = TracingPreimageIO::new(cache.clone());
+            let oracle = TracingPreimageIO::new(oracle.clone());
             let mut error = false;
             for derivation in derivations.iter() {
                 info!("start derivation {:?}", derivation);

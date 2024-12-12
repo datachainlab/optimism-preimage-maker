@@ -1,5 +1,6 @@
 use crate::derivation::oracle::Cache;
 use alloy_primitives::B256;
+use hashbrown::HashMap;
 use kona_preimage::errors::PreimageOracleResult;
 use kona_preimage::{CommsClient, HintWriterClient, PreimageKey, PreimageOracleClient};
 use lru::LruCache;
@@ -7,33 +8,39 @@ use prost::Message;
 use spin::Mutex;
 use std::fmt::Debug;
 use std::sync::Arc;
-use hashbrown::HashMap;
 
 #[derive(Debug, Clone)]
-pub struct TracingPreimageIO {
+pub struct TracingPreimageIO<T>
+where
+    T: PreimageOracleClient + HintWriterClient + Send + Sync,
+{
     used: Arc<Mutex<HashMap<PreimageKey, Vec<u8>>>>,
-    cache: Arc<spin::Mutex<LruCache<PreimageKey, Vec<u8>>>>,
+    inner: T,
 }
 
-impl TracingPreimageIO {
-    pub fn new(cache: Cache) -> Self {
+impl<T> TracingPreimageIO<T>
+where
+    T: PreimageOracleClient + HintWriterClient + Send + Sync,
+{
+    pub fn new(inner: T) -> Self {
         Self {
             used: Arc::new(Mutex::new(HashMap::default())),
-            cache,
+            inner,
         }
     }
 }
 
-impl From<TracingPreimageIO> for Vec<u8> {
-    fn from(value: TracingPreimageIO) -> Self {
+impl<T> From<TracingPreimageIO<T>> for Vec<u8>
+where
+    T: PreimageOracleClient + HintWriterClient + Send + Sync,
+{
+    fn from(value: TracingPreimageIO<T>) -> Self {
         let used = value.used.lock();
         let mut temp: Vec<Preimage> = Vec::with_capacity(used.len());
-        for (k,v) in used.iter() {
-            temp.push(Preimage::new(k.clone(),v.clone()));
+        for (k, v) in used.iter() {
+            temp.push(Preimage::new(k.clone(), v.clone()));
         }
-        let data = Preimages {
-            preimages: temp,
-        };
+        let data = Preimages { preimages: temp };
         let mut buf: Vec<u8> = Vec::new();
         data.encode(&mut buf).unwrap();
         buf
@@ -41,31 +48,30 @@ impl From<TracingPreimageIO> for Vec<u8> {
 }
 
 #[async_trait::async_trait]
-impl PreimageOracleClient for TracingPreimageIO {
+impl<T> PreimageOracleClient for TracingPreimageIO<T>
+where
+    T: PreimageOracleClient + HintWriterClient + Send + Sync,
+{
     async fn get(&self, key: PreimageKey) -> PreimageOracleResult<Vec<u8>> {
-        let mut cache_lock = self.cache.lock();
-        let result = cache_lock.get(&key).unwrap();
-        self.used
-            .lock()
-            .insert(key, result.clone());
+        let result = self.inner.get(key).await?;
+        self.used.lock().insert(key, result.clone());
         Ok(result.clone())
     }
 
     async fn get_exact(&self, key: PreimageKey, buf: &mut [u8]) -> PreimageOracleResult<()> {
-        let mut cache_lock = self.cache.lock();
-        let result = cache_lock.get(&key).unwrap();
-        buf.copy_from_slice(result.as_slice());
-        self.used
-            .lock()
-            .insert(key, buf.to_vec());
+        self.inner.get_exact(key, buf).await?;
+        self.used.lock().insert(key, buf.to_vec());
         Ok(())
     }
 }
 
 #[async_trait::async_trait]
-impl HintWriterClient for TracingPreimageIO {
+impl<T> HintWriterClient for TracingPreimageIO<T>
+where
+    T: PreimageOracleClient + HintWriterClient + Send + Sync,
+{
     async fn write(&self, hint: &str) -> PreimageOracleResult<()> {
-        Ok(())
+        self.inner.write(hint).await
     }
 }
 
