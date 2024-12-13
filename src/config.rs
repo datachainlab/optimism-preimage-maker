@@ -53,6 +53,9 @@ pub struct Config {
     /// look up the config in the superchain registry.
     #[clap(long, default_value = "0.0.0.0:10080")]
     pub http_server_addr: String,
+
+    #[clap(long, default_value = ".data")]
+    pub datadir: String,
 }
 
 impl Config {
@@ -76,7 +79,7 @@ impl Config {
     }
 
     pub fn construct_kv_store(&self) -> SharedKeyValueStore {
-        let kv_store = DiskKeyValueStore::new(".data/remote".into());
+        let kv_store = DiskKeyValueStore::new(format!("{}/preimage", &self.datadir).into());
         //let kv_store = MemoryKeyValueStore::new();
         let kv_store: SharedKeyValueStore = Arc::new(RwLock::new(kv_store));
         kv_store

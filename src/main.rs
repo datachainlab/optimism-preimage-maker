@@ -1,6 +1,7 @@
 #![feature(const_trait_impl)]
 extern crate core;
 
+use crate::checkpoint::{start_checkpoint_server, LastBlock};
 use crate::config::Config;
 use crate::derivation::oracle::lockfree::client::PreimageIO;
 use crate::derivation::oracle::lockfree::fetcher::Fetcher;
@@ -28,6 +29,7 @@ use tracing_subscriber::filter;
 use tracing_subscriber::layer::SubscriberExt;
 use tracing_subscriber::util::SubscriberInitExt;
 
+mod checkpoint;
 mod config;
 mod derivation;
 mod polling;
@@ -54,11 +56,16 @@ async fn main() -> anyhow::Result<()> {
         }
     };
 
+    let (checkpoint_task, saver, last_block) = start_checkpoint_server(config.datadir.as_str())?;
+
     let (sender, mut receiver) = mpsc::channel::<ChannelInterface>(20);
 
-    // Create tasks
+    // Start HTTP server
     let http_server_task = start_http_server_task(config.http_server_addr.as_str(), sender.clone());
+
+    // Start Polling server
     let polling_task = start_polling_task(
+        last_block,
         config.l2_rollup_node_address.as_str(),
         config.l2_node_address.as_str(),
         sender,
@@ -80,7 +87,7 @@ async fn main() -> anyhow::Result<()> {
     let oracle = PreimageIO::new(cache.clone(), hint_channel, preimage_channel);
 
     while let Some((derivations, reply)) = receiver.recv().await {
-        let result = if let Some(reply) = reply {
+        if let Some(reply) = reply {
             let oracle = TracingPreimageIO::new(oracle.clone());
             let mut error = false;
             for derivation in derivations.iter() {
@@ -104,6 +111,8 @@ async fn main() -> anyhow::Result<()> {
                     }
                 };
             }
+
+            // Return to caller
             let reply_result = if error {
                 reply.send(vec![])
             } else {
@@ -131,10 +140,19 @@ async fn main() -> anyhow::Result<()> {
                 };
             }
         };
+
+        // Save last block
+        let last_block = LastBlock {
+            l2_block_number: derivations.last().unwrap().l2_block_number,
+        };
+        if let Err(err) = saver.send(last_block).await {
+            error!("failed to send to saving last block: {:?}", err);
+        }
     }
 
     http_server_task.abort();
     polling_task.abort();
+    checkpoint_task.abort();
 
     Ok(())
 }
