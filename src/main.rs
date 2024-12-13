@@ -3,9 +3,6 @@ extern crate core;
 
 use crate::checkpoint::{start_checkpoint_server, LastBlock};
 use crate::config::Config;
-use crate::derivation::oracle::lockfree::client::PreimageIO;
-use crate::derivation::oracle::lockfree::fetcher::Fetcher;
-use crate::derivation::oracle::lockfree::server::{start_hint_server, start_preimage_server};
 use crate::derivation::oracle::new_cache;
 use crate::derivation::ChannelInterface;
 use crate::polling::start_polling_task;
@@ -28,6 +25,7 @@ use tracing::{info, Level};
 use tracing_subscriber::filter;
 use tracing_subscriber::layer::SubscriberExt;
 use tracing_subscriber::util::SubscriberInitExt;
+use crate::derivation::oracle::lockfree::make_oracle;
 
 mod checkpoint;
 mod config;
@@ -72,19 +70,7 @@ async fn main() -> anyhow::Result<()> {
     );
 
     // Start Derivation host
-    let cache = new_cache();
-    let global_kv_store = config.construct_kv_store();
-    let (l1_provider, blob_provider, l2_provider) = config.create_providers().await?;
-    let fetcher = Fetcher::new(
-        global_kv_store.clone(),
-        l1_provider.clone(),
-        blob_provider.clone(),
-        l2_provider.clone(),
-    );
-    let fetcher = Arc::new(RwLock::new(fetcher));
-    let (hint_channel, hint_server) = start_hint_server(fetcher.clone());
-    let (preimage_channel, preimage_server) = start_preimage_server(fetcher.clone());
-    let oracle = PreimageIO::new(cache.clone(), hint_channel, preimage_channel);
+    let oracle = make_oracle(&config).await;
 
     while let Some((derivations, reply)) = receiver.recv().await {
         if let Some(reply) = reply {

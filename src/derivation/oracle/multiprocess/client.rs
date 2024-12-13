@@ -33,9 +33,6 @@ pub static HINT_WRITER: HintWriter = HintWriter::new(HINT_WRITER_PIPE);
 #[allow(unreachable_pub)]
 #[derive(Debug, Clone)]
 pub struct PreimageIO<OR, HW>
-where
-    OR: PreimageOracleClient,
-    HW: HintWriterClient,
 {
     /// The spin-locked cache that stores the responses from the oracle.
     pub cache: Cache,
