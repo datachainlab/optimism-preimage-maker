@@ -109,7 +109,7 @@ async fn main() -> anyhow::Result<()> {
             }
         } else {
             for derivation in derivations.iter() {
-                info!("start derivation {:?}", derivation);
+                info!("start derivation {:?}", derivation.l2_block_number);
                 let result = derivation
                     .verify(config.l2_chain_id, &rollup_config, oracle.clone())
                     .await;

@@ -4,6 +4,7 @@ use crate::derivation::client::l2::L2Client;
 use crate::derivation::ChannelInterface;
 use optimism_derivation::derivation::Derivation;
 use std::time::Duration;
+use log::info;
 use tokio::sync::mpsc::Sender;
 use tokio::task::JoinHandle;
 
@@ -15,10 +16,12 @@ pub fn start_polling_task(
 ) -> JoinHandle<()> {
     let l2_client = L2Client::new(op_node_addr.to_string(), op_geth_addr.to_string());
     tokio::spawn(async move {
+        let mut prev = last_block.l2_block_number + 1;
         loop {
             let sync_status = l2_client.sync_status().await.unwrap();
             let finalized_l2 = sync_status.finalized_l2.number;
-            for n in (last_block.l2_block_number + 1)..finalized_l2 {
+            info!("sync status: l1={:?}, l2={}", sync_status.finalized_l1.hash, finalized_l2);
+            for n in (prev + 1)..finalized_l2 {
                 let claiming_l2_number = n;
                 let claiming_l2_hash = l2_client
                     .get_block_by_number(claiming_l2_number)
@@ -30,10 +33,6 @@ pub fn start_polling_task(
 
                 let agreed_l2_hash = l2_client.get_block_by_number(n - 1).await.unwrap().hash;
                 let agreed_output_root = l2_client.output_root_at(n - 1).await.unwrap();
-                /*
-                let fetcher = Fetcher::new(global_kv_store.clone(), l1_provider.clone(), blob_provider.clone(), l2_provider.clone(), agreed_l2_hash);;
-                let oracle = PreimageIO::new(Arc::new(fetcher));
-                 */
                 let derivation = Derivation::new(
                     sync_status.finalized_l1.hash,
                     agreed_l2_hash,
@@ -43,8 +42,9 @@ pub fn start_polling_task(
                     claiming_l2_number,
                 );
                 sender.send((vec![derivation], None)).await.unwrap();
+                prev = claiming_l2_number
             }
-            tokio::time::sleep(Duration::from_secs(60)).await;
+            tokio::time::sleep(Duration::from_secs(2)).await;
         }
     })
 }

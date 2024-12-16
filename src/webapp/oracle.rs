@@ -54,6 +54,7 @@ where
 {
     async fn get(&self, key: PreimageKey) -> PreimageOracleResult<Vec<u8>> {
         let result = self.inner.get(key).await?;
+        // TODO save hashkey if the key type is blob or precompiles
         self.used.lock().insert(key, result.clone());
         Ok(result.clone())
     }

@@ -8,12 +8,14 @@ use optimism_derivation::derivation::Derivation;
 use serde::Serialize;
 use std::fmt::Debug;
 use std::sync::Arc;
+use log::info;
 use tokio::sync::oneshot;
 
 pub async fn derivation(
     State(state): State<Arc<DerivationState>>,
     Json(payload): Json<Vec<Derivation>>,
 ) -> (StatusCode, Vec<u8>) {
+    info!("derivation request: {:?}", payload);
     let (sender, receiver) = oneshot::channel::<Vec<u8>>();
     let result = state.sender.send((payload, Some(sender))).await;
     match result {
