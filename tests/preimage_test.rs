@@ -2,7 +2,7 @@ use std::fs;
 use optimism_derivation::derivation::Derivation;
 use optimism_preimage_maker::derivation::client::l2;
 #[tokio::test]
-async fn test_make_preimages() {
+async fn test_makpreimages() {
     let op_node_addr = "http://localhost:7545".to_string();
     let op_geth_addr = "http://localhost:9545".to_string();
     let l2_client = l2::L2Client::new(op_node_addr.to_string(), op_geth_addr.to_string());

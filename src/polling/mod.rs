@@ -16,6 +16,7 @@ pub fn start_polling_task(
 ) -> JoinHandle<()> {
     let l2_client = L2Client::new(op_node_addr.to_string(), op_geth_addr.to_string());
     tokio::spawn(async move {
+        // FIXME : [prev] The older from the present, the slower the derivation. it maybe finalized too new too new l1 head.
         let mut prev = last_block.l2_block_number + 1;
         loop {
             let sync_status = l2_client.sync_status().await.unwrap();
