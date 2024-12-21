@@ -1,12 +1,12 @@
-use std::sync::Arc;
-use anyhow::Result;
-use kona_preimage::{HintWriterClient, PreimageOracleClient};
-use tokio::sync::{oneshot, RwLock};
 use crate::config::Config;
 use crate::derivation::oracle::lockfree::client::PreimageIO;
 use crate::derivation::oracle::lockfree::fetcher::Fetcher;
 use crate::derivation::oracle::lockfree::server::{start_hint_server, start_preimage_server};
 use crate::derivation::oracle::new_cache;
+use anyhow::Result;
+use kona_preimage::{HintWriterClient, PreimageOracleClient};
+use std::sync::Arc;
+use tokio::sync::{oneshot, RwLock};
 
 type PreimageSender = oneshot::Sender<Result<Vec<u8>>>;
 type HintSender = oneshot::Sender<bool>;
@@ -15,8 +15,7 @@ mod client;
 mod fetcher;
 mod server;
 
-pub async fn make_oracle(config: &Config) -> PreimageIO
-{
+pub async fn make_oracle(config: &Config) -> PreimageIO {
     let global_kv_store = config.construct_kv_store();
     let (l1_provider, blob_provider, l2_provider) = config.create_providers().await.unwrap();
     let fetcher = Fetcher::new(

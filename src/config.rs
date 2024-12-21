@@ -40,20 +40,11 @@ pub struct Config {
         default_value = "http://localhost:5052"
     )]
     pub l1_beacon_address: String,
-    /// The L2 chain ID of a supported chain. If provided, the host will look for the corresponding
-    /// rollup config in the superchain registry.
-    #[clap(long, default_value = "901")]
-    pub l2_chain_id: u64,
-    /// Path to rollup config. If provided, the host will use this config instead of attempting to
-    /// look up the config in the superchain registry.
-    #[clap(long, default_value = "../optimism/.devnet/rollup.json")]
-    pub rollup_config_path: Option<PathBuf>,
-
     /// Path to rollup config. If provided, the host will use this config instead of attempting to
     /// look up the config in the superchain registry.
     #[clap(long, default_value = "0.0.0.0:10080")]
     pub http_server_addr: String,
-
+    /// Preimage data directory
     #[clap(long, default_value = ".data")]
     pub datadir: String,
 }

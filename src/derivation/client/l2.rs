@@ -1,5 +1,6 @@
 use alloy_primitives::B256;
 use anyhow::Result;
+use op_alloy_genesis::RollupConfig;
 use optimism_derivation::derivation::Derivation;
 use reqwest::Response;
 use serde_json::Value;
@@ -101,6 +102,40 @@ impl L2Client {
             op_node_addr,
             op_geth_addr,
         }
+    }
+
+    pub async fn chain_id(&self) -> Result<u64> {
+        let client = reqwest::Client::new();
+        let body = RpcRequest {
+            method: "eth_chainId".into(),
+            ..Default::default()
+        };
+        let response = client
+            .post(&self.op_geth_addr)
+            .header("Content-Type", "application/json")
+            .json(&body)
+            .send()
+            .await?;
+        let response = self.check_response(response).await?;
+        let result: RpcResult<String> = response.json().await?;
+        Ok(u64::from_str_radix(&result.result[2..], 16)?)
+    }
+
+    pub async fn rollup_config(&self) -> Result<RollupConfig> {
+        let client = reqwest::Client::new();
+        let body = RpcRequest {
+            method: "optimism_rollupConfig".into(),
+            ..Default::default()
+        };
+        let response = client
+            .post(&self.op_node_addr)
+            .header("Content-Type", "application/json")
+            .json(&body)
+            .send()
+            .await?;
+        let response = self.check_response(response).await?;
+        let result: RpcResult<RollupConfig> = response.json().await?;
+        Ok(result.result)
     }
     pub async fn sync_status(&self) -> Result<SyncStatus> {
         let client = reqwest::Client::new();

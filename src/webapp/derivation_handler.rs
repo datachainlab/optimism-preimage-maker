@@ -4,11 +4,11 @@ use axum::extract::State;
 use axum::http::StatusCode;
 use axum::Json;
 use kona_preimage::{CommsClient, HintWriterClient, PreimageOracleClient};
+use log::info;
 use optimism_derivation::derivation::Derivation;
 use serde::Serialize;
 use std::fmt::Debug;
 use std::sync::Arc;
-use log::info;
 use tokio::sync::oneshot;
 
 pub async fn derivation(

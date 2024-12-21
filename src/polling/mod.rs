@@ -1,27 +1,28 @@
-use std::cmp::min;
 use crate::checkpoint::LastBlock;
 use crate::derivation::client::l2::L2Client;
 use crate::derivation::ChannelInterface;
-use optimism_derivation::derivation::Derivation;
-use std::time::Duration;
 use log::info;
+use optimism_derivation::derivation::Derivation;
+use std::cmp::min;
+use std::time::Duration;
 use tokio::sync::mpsc::Sender;
 use tokio::task::JoinHandle;
 
 pub fn start_polling_task(
     last_block: LastBlock,
-    op_node_addr: &str,
-    op_geth_addr: &str,
+    l2_client: L2Client,
     sender: Sender<ChannelInterface>,
 ) -> JoinHandle<()> {
-    let l2_client = L2Client::new(op_node_addr.to_string(), op_geth_addr.to_string());
     tokio::spawn(async move {
         // FIXME : [prev] The older from the present, the slower the derivation. it maybe finalized too new too new l1 head.
         let mut prev = last_block.l2_block_number + 1;
         loop {
             let sync_status = l2_client.sync_status().await.unwrap();
             let finalized_l2 = sync_status.finalized_l2.number;
-            info!("sync status: l1={:?}, l2={}", sync_status.finalized_l1.hash, finalized_l2);
+            info!(
+                "sync status: l1={:?}, l2={}",
+                sync_status.finalized_l1.hash, finalized_l2
+            );
             for n in (prev + 1)..finalized_l2 {
                 let claiming_l2_number = n;
                 let claiming_l2_hash = l2_client

@@ -32,8 +32,7 @@ pub static HINT_WRITER: HintWriter = HintWriter::new(HINT_WRITER_PIPE);
 /// [HintWriter]: kona_preimage::HintWriter
 #[allow(unreachable_pub)]
 #[derive(Debug, Clone)]
-pub struct PreimageIO<OR, HW>
-{
+pub struct PreimageIO<OR, HW> {
     /// The spin-locked cache that stores the responses from the oracle.
     pub cache: Cache,
     /// Oracle reader type.

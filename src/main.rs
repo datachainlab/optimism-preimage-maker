@@ -3,6 +3,8 @@ extern crate core;
 
 use crate::checkpoint::{start_checkpoint_server, LastBlock};
 use crate::config::Config;
+use crate::derivation::client::l2::L2Client;
+use crate::derivation::oracle::lockfree::make_oracle;
 use crate::derivation::oracle::new_cache;
 use crate::derivation::ChannelInterface;
 use crate::polling::start_polling_task;
@@ -25,7 +27,6 @@ use tracing::{info, Level};
 use tracing_subscriber::filter;
 use tracing_subscriber::layer::SubscriberExt;
 use tracing_subscriber::util::SubscriberInitExt;
-use crate::derivation::oracle::lockfree::make_oracle;
 
 mod checkpoint;
 mod config;
@@ -44,15 +45,14 @@ async fn main() -> anyhow::Result<()> {
         .with(tracing_subscriber::fmt::layer())
         .with(filter)
         .init();
-    tracing::info!("start optimism preimage-maker");
+    info!("start optimism preimage-maker");
 
-    let rollup_config = match &config.rollup_config_path {
-        None => RollupConfig::from_l2_chain_id(config.l2_chain_id).unwrap(),
-        Some(path) => {
-            let json = std::fs::read(path.clone())?;
-            serde_json::from_slice(json.as_slice())?
-        }
-    };
+    let l2_client = L2Client::new(
+        config.l2_rollup_node_address.to_string(),
+        config.l2_node_address.to_string(),
+    );
+    let rollup_config = l2_client.rollup_config().await?;
+    let chain_id = l2_client.chain_id().await?;
 
     let (checkpoint_task, saver, last_block) = start_checkpoint_server(config.datadir.as_str())?;
 
@@ -62,12 +62,7 @@ async fn main() -> anyhow::Result<()> {
     let http_server_task = start_http_server_task(config.http_server_addr.as_str(), sender.clone());
 
     // Start Polling server
-    let polling_task = start_polling_task(
-        last_block,
-        config.l2_rollup_node_address.as_str(),
-        config.l2_node_address.as_str(),
-        sender,
-    );
+    let polling_task = start_polling_task(last_block, l2_client, sender);
 
     // Start Derivation host
     let oracle = make_oracle(&config).await;
@@ -79,7 +74,7 @@ async fn main() -> anyhow::Result<()> {
             for derivation in derivations.iter() {
                 info!("start derivation {:?}", derivation);
                 let result = derivation
-                    .verify(config.l2_chain_id, &rollup_config, oracle.clone())
+                    .verify(chain_id, &rollup_config, oracle.clone())
                     .await;
                 match result {
                     Ok(_) => info!(
@@ -111,7 +106,7 @@ async fn main() -> anyhow::Result<()> {
             for derivation in derivations.iter() {
                 info!("start derivation {:?}", derivation.l2_block_number);
                 let result = derivation
-                    .verify(config.l2_chain_id, &rollup_config, oracle.clone())
+                    .verify(chain_id, &rollup_config, oracle.clone())
                     .await;
                 match result {
                     Ok(_) => info!(
