@@ -100,7 +100,7 @@ async fn main() -> anyhow::Result<()> {
                 reply.send(oracle.into())
             };
             if let Err(err) = reply_result {
-                error!("failed to send derivation result: {:?}", err);
+                error!("failed to send derivation result: preimage size = {:?}", err.len());
             }
         } else {
             for derivation in derivations.iter() {
