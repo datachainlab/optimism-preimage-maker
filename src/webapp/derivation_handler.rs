@@ -16,6 +16,9 @@ pub async fn derivation(
     Json(payload): Json<Vec<Derivation>>,
 ) -> (StatusCode, Vec<u8>) {
     info!("derivation request: {:?}", payload);
+    if payload.is_empty() {
+        return (StatusCode::BAD_REQUEST, vec![]);
+    }
     let (sender, receiver) = oneshot::channel::<Vec<u8>>();
     let result = state.sender.send((payload, Some(sender))).await;
     match result {
