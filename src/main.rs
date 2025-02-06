@@ -2,41 +2,38 @@
 extern crate core;
 
 use crate::checkpoint::{start_checkpoint_server, LastBlock};
-use crate::config::Config;
 use crate::derivation::client::l2::L2Client;
-use crate::derivation::oracle::lockfree::make_oracle;
-use crate::derivation::oracle::new_cache;
-use crate::derivation::ChannelInterface;
-use crate::polling::start_polling_task;
 use crate::webapp::oracle::TracingPreimageIO;
-use crate::webapp::start_http_server_task;
+use crate::webapp::{start_http_server_task, DerivationState};
 use clap::Parser;
-use kona_common_proc::client_entry;
-use kona_preimage::{CommsClient, PreimageKey};
+use kona_preimage::{BidirectionalChannel, CommsClient, HintReader, HintWriter, OracleReader, OracleServer, PreimageKey};
 use log::error;
 use lru::LruCache;
-use op_alloy_genesis::RollupConfig;
-use optimism_derivation::derivation::Derivation;
+use maili_genesis::RollupConfig;
 use serde::Serialize;
 use std::fmt::Debug;
 use std::sync::Arc;
 use std::time::Duration;
+use kona_client::single;
+use kona_host::{DetachedHostOrchestrator, HostOrchestrator, PreimageServer};
 use tokio::sync::{mpsc, oneshot, RwLock};
+use tokio::task;
 use tracing::metadata::LevelFilter;
 use tracing::{info, Level};
 use tracing_subscriber::filter;
 use tracing_subscriber::layer::SubscriberExt;
 use tracing_subscriber::util::SubscriberInitExt;
+use crate::host::single::cli::SingleChainHostCli;
+use crate::host::single::orchestrator::DerivationRequest;
 
 mod checkpoint;
-mod config;
 mod derivation;
-mod polling;
 mod webapp;
+mod host;
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
-    let config = Config::parse();
+    let config = SingleChainHostCli::parse();
 
     // start tracing
     let filter = filter::EnvFilter::from_default_env()
@@ -48,92 +45,21 @@ async fn main() -> anyhow::Result<()> {
     info!("start optimism preimage-maker");
 
     let l2_client = L2Client::new(
-        config.l2_rollup_node_address.to_string(),
+        config.l2_rollup_address.to_string(),
         config.l2_node_address.to_string(),
     );
     let rollup_config = l2_client.rollup_config().await?;
     let chain_id = l2_client.chain_id().await?;
 
-    let (checkpoint_task, saver, last_block) = start_checkpoint_server(config.datadir.as_str())?;
-
-    let (sender, mut receiver) = mpsc::channel::<ChannelInterface>(20);
-
     // Start HTTP server
-    let http_server_task = start_http_server_task(config.http_server_addr.as_str(), sender.clone());
+    let http_server_task = start_http_server_task(config.http_server_addr.as_str(), DerivationState {
+        rollup_config: rollup_config.clone(),
+        config: config.clone(),
+        l2_chain_id: chain_id,
+    });
 
-    // Start Polling server
-    let polling_task = start_polling_task(last_block, l2_client, sender);
-
-    // Start Derivation host
-    let oracle = make_oracle(&config).await;
-
-    while let Some((derivations, reply)) = receiver.recv().await {
-        if let Some(reply) = reply {
-            let oracle = TracingPreimageIO::new(oracle.clone());
-            let mut error = false;
-            for derivation in derivations.iter() {
-                info!("start derivation {:?}", derivation);
-                let result = derivation
-                    .verify(chain_id, &rollup_config, oracle.clone())
-                    .await;
-                match result {
-                    Ok(_) => info!(
-                        "end derivation claiming number = {}",
-                        derivation.l2_block_number
-                    ),
-                    Err(e) => {
-                        tracing::error!(
-                            "end derivation claiming number = {} with error = {:?}",
-                            derivation.l2_block_number,
-                            e
-                        );
-                        error = true;
-                        break;
-                    }
-                };
-            }
-
-            // Return to caller
-            let reply_result = if error {
-                reply.send(vec![])
-            } else {
-                reply.send(oracle.into())
-            };
-            if let Err(err) = reply_result {
-                error!("failed to send derivation result: preimage size = {:?}", err.len());
-            }
-        } else {
-            for derivation in derivations.iter() {
-                info!("start derivation {:?}", derivation.l2_block_number);
-                let result = derivation
-                    .verify(chain_id, &rollup_config, oracle.clone())
-                    .await;
-                match result {
-                    Ok(_) => info!(
-                        "end derivation claiming number = {}",
-                        derivation.l2_block_number
-                    ),
-                    Err(e) => tracing::error!(
-                        "end derivation claiming number = {} with error = {:?}",
-                        derivation.l2_block_number,
-                        e
-                    ),
-                };
-            }
-        };
-
-        // Save last block
-        let last_block = LastBlock {
-            l2_block_number: derivations.last().unwrap().l2_block_number,
-        };
-        if let Err(err) = saver.send(last_block).await {
-            error!("failed to send to saving last block: {:?}", err);
-        }
-    }
-
-    http_server_task.abort();
-    polling_task.abort();
-    checkpoint_task.abort();
+    let result = http_server_task.await;
+    info!("server result : {:?}", result);
 
     Ok(())
 }
