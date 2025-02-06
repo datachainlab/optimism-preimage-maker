@@ -38,9 +38,9 @@ pub async fn derivation(
         l2_block_number: payload.l2_block_number,
     };
     match derivation.start().await {
-        Ok(_) => {
+        Ok(preimage) => {
             info!("derivation success");
-            (StatusCode::OK, vec![])
+            (StatusCode::OK, preimage)
         },
         Err(e) => {
             info!("failed to run derivation: {:?}", e);

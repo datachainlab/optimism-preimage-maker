@@ -53,4 +53,7 @@ async fn test_makpreimages() {
     )
     .unwrap();
     fs::write("./preimage.bin", preimage_bytes).unwrap();
+
+    let rollup_config = l2_client.rollup_config().await.unwrap();
+    fs::write("./rollup_config.json", serde_json::to_vec(&rollup_config).unwrap()).unwrap();
 }

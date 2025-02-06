@@ -3,7 +3,7 @@
 use alloy_provider::ReqwestProvider;
 use anyhow::{anyhow, Result};
 use async_trait::async_trait;
-use kona_host::{DetachedHostOrchestrator, DiskKeyValueStore, Fetcher, HostOrchestrator, MemoryKeyValueStore, PreimageServer, SharedKeyValueStore, SplitKeyValueStore};
+use kona_host::{DetachedHostOrchestrator, DiskKeyValueStore, Fetcher, HostOrchestrator, KeyValueStore, MemoryKeyValueStore, PreimageServer, SharedKeyValueStore, SplitKeyValueStore};
 use kona_preimage::{BidirectionalChannel, HintReader, HintWriter, NativeChannel, OracleReader, OracleServer};
 use kona_providers_alloy::{OnlineBeaconClient, OnlineBlobProvider};
 use std::sync::Arc;
@@ -17,6 +17,7 @@ use tokio::task;
 use crate::host::single::cli::SingleChainHostCli;
 use crate::host::single::fetcher::SingleChainFetcher;
 use crate::host::single::local_kv::LocalKeyValueStore;
+use crate::host::single::trace::{encode_to_bytes, TracingKeyValueStore};
 
 #[derive(Debug, Clone)]
 pub struct DerivationRequest {
@@ -42,11 +43,9 @@ pub struct SingleChainProviders {
     l2_provider: ReqwestProvider,
 }
 
-#[async_trait]
-impl HostOrchestrator for DerivationRequest {
-    type Providers = SingleChainProviders;
+impl DerivationRequest {
 
-    async fn create_providers(&self) -> Result<Option<Self::Providers>> {
+    async fn create_providers(&self) -> Result<Option<SingleChainProviders>> {
         let l1_provider =
             http_provider(self.config.l1_node_address.as_ref());
         let blob_provider = OnlineBlobProvider::init(OnlineBeaconClient::new_http(
@@ -62,7 +61,7 @@ impl HostOrchestrator for DerivationRequest {
 
     fn create_fetcher(
         &self,
-        providers: Option<Self::Providers>,
+        providers: Option<SingleChainProviders>,
         kv_store: SharedKeyValueStore,
     ) -> Option<Arc<RwLock<impl Fetcher + Send + Sync + 'static>>> {
         providers.map(|providers| {
@@ -76,17 +75,17 @@ impl HostOrchestrator for DerivationRequest {
         })
     }
 
-    fn create_key_value_store(&self) -> Result<SharedKeyValueStore> {
+    fn create_key_value_store(&self) -> Result<Arc<RwLock<TracingKeyValueStore>>> {
         let local_kv_store = LocalKeyValueStore::new(self.clone());
 
-        let kv_store: SharedKeyValueStore = if let Some(ref data_dir) = self.config.data_dir {
+        let kv_store = if let Some(ref data_dir) = self.config.data_dir {
             let disk_kv_store = DiskKeyValueStore::new(data_dir.clone());
             let split_kv_store = SplitKeyValueStore::new(local_kv_store, disk_kv_store);
-            Arc::new(RwLock::new(split_kv_store))
+            Arc::new(RwLock::new(TracingKeyValueStore::new(Box::new(split_kv_store))))
         } else {
             let mem_kv_store = MemoryKeyValueStore::new();
             let split_kv_store = SplitKeyValueStore::new(local_kv_store, mem_kv_store);
-            Arc::new(RwLock::new(split_kv_store))
+            Arc::new(RwLock::new(TracingKeyValueStore::new(Box::new(split_kv_store))))
         };
 
         Ok(kv_store)
@@ -99,7 +98,7 @@ impl HostOrchestrator for DerivationRequest {
         kona_client::single::run(oracle_reader, hint_reader, None).await.map_err(Into::into)
     }
 
-    async fn start(&self) -> Result<()> {
+    pub async fn start(&self) -> Result<Vec<u8>> {
         let hint = BidirectionalChannel::new()?;
         let preimage = BidirectionalChannel::new()?;
         let kv_store = self.create_key_value_store()?;
@@ -110,7 +109,7 @@ impl HostOrchestrator for DerivationRequest {
             PreimageServer::new(
                 OracleServer::new(preimage.host),
                 HintReader::new(hint.host),
-                kv_store,
+                kv_store.clone(),
                 fetcher,
             )
                 .start(),
@@ -122,14 +121,13 @@ impl HostOrchestrator for DerivationRequest {
 
         let (_, client_result) = tokio::try_join!(server_task, client_task)?;
         tracing::info!("Client result: {:?}", client_result);
-        Ok(())
-    }
-}
-
-#[async_trait]
-impl DetachedHostOrchestrator for DerivationRequest {
-    fn is_detached(&self) -> bool {
-        false
+        let used = {
+            let mut lock = kv_store.write().await;
+            std::mem::take(&mut lock.used)
+        };
+        let preimage = encode_to_bytes(used);
+        tracing::info!("Preimage size: {}", preimage.len());
+        Ok(preimage)
     }
 }
 
