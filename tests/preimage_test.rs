@@ -21,8 +21,8 @@ async fn test_makpreimages() {
 
     let sync_status = l2_client.sync_status().await.unwrap();
     let finalized_l2 = sync_status.finalized_l2.number;
-    let claiming_l2_number = finalized_l2;
-    let agreed_l2_number = claiming_l2_number - 100;
+    let claiming_l2_number = finalized_l2 - 1000;
+    let agreed_l2_number = claiming_l2_number - 1000;
     let claiming_output_root = l2_client.output_root_at(claiming_l2_number).await.unwrap();
     let agreed_l2_hash = l2_client
         .get_block_by_number(agreed_l2_number)

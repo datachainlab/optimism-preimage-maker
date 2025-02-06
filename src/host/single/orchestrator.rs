@@ -76,19 +76,12 @@ impl DerivationRequest {
     }
 
     fn create_key_value_store(&self) -> Result<Arc<RwLock<TracingKeyValueStore>>> {
+        // Only memory store is traceable
+        // Using disk causes insufficient blob preimages in ELC because the already stored data is not traceable
         let local_kv_store = LocalKeyValueStore::new(self.clone());
-
-        let kv_store = if let Some(ref data_dir) = self.config.data_dir {
-            let disk_kv_store = DiskKeyValueStore::new(data_dir.clone());
-            let split_kv_store = SplitKeyValueStore::new(local_kv_store, disk_kv_store);
-            Arc::new(RwLock::new(TracingKeyValueStore::new(Box::new(split_kv_store))))
-        } else {
-            let mem_kv_store = MemoryKeyValueStore::new();
-            let split_kv_store = SplitKeyValueStore::new(local_kv_store, mem_kv_store);
-            Arc::new(RwLock::new(TracingKeyValueStore::new(Box::new(split_kv_store))))
-        };
-
-        Ok(kv_store)
+        let mem_kv_store = MemoryKeyValueStore::new();
+        let split_kv_store = SplitKeyValueStore::new(local_kv_store, mem_kv_store);
+        Ok(Arc::new(RwLock::new(TracingKeyValueStore::new(Box::new(split_kv_store)))))
     }
 
     async fn run_client_native(
