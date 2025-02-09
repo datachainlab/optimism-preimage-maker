@@ -1,22 +1,23 @@
-use crate::derivation::ChannelInterface;
 use anyhow::{Chain, Context, Result};
 use axum::http::StatusCode;
 use axum::routing::{get, post};
 use kona_preimage::{CommsClient, HintWriterClient, PreimageOracleClient};
-use op_alloy_genesis::RollupConfig;
-use optimism_derivation::derivation::{Derivation, Derivations};
 use std::fmt::Debug;
 use std::sync::Arc;
+use maili_genesis::RollupConfig;
 use tokio::net::TcpListener;
 use tokio::sync::mpsc::Sender;
 use tokio::sync::{mpsc, oneshot};
 use tokio::task::JoinHandle;
+use crate::host::single::cli::SingleChainHostCli;
 
 mod derivation_handler;
 pub mod oracle;
 
 pub struct DerivationState {
-    pub sender: mpsc::Sender<ChannelInterface>,
+    pub rollup_config: RollupConfig,
+    pub config: SingleChainHostCli,
+    pub l2_chain_id: u64
 }
 
 async fn start_http_server(addr: &str, derivation_state: DerivationState) -> Result<()> {
@@ -32,12 +33,11 @@ async fn start_http_server(addr: &str, derivation_state: DerivationState) -> Res
 
 pub fn start_http_server_task(
     addr: &str,
-    sender: Sender<ChannelInterface>,
+    state: DerivationState,
 ) -> JoinHandle<Result<()>> {
     let addr = addr.to_string();
     tokio::spawn(async move {
-        let derivation_state = DerivationState { sender };
-        start_http_server(&addr, derivation_state)
+        start_http_server(&addr, state)
             .await
             .context("http server error")
     })

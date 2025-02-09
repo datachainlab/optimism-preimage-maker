@@ -1,7 +1,6 @@
 use alloy_primitives::B256;
 use anyhow::Result;
-use op_alloy_genesis::RollupConfig;
-use optimism_derivation::derivation::Derivation;
+use maili_genesis::RollupConfig;
 use reqwest::Response;
 use serde_json::Value;
 
@@ -205,7 +204,7 @@ impl L2Client {
 
 #[cfg(test)]
 mod test {
-    use crate::l2::client::L2Client;
+    use crate::derivation::client::l2::L2Client;
 
     #[tokio::test]
     pub async fn test_sync_status() {
