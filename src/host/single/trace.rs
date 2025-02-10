@@ -1,12 +1,10 @@
 //! Contains a concrete implementation of the [KeyValueStore] trait that stores data in memory.
 
-use alloy_primitives::{B256};
+use alloy_primitives::B256;
 use anyhow::Result;
-use hashbrown::HashMap;
 use kona_host::KeyValueStore;
-use kona_preimage::{HintWriterClient, PreimageKey, PreimageKeyType, PreimageOracleClient};
+use kona_preimage::PreimageKey;
 use optimism_derivation::types::{Preimage, Preimages};
-use crate::webapp::oracle::TracingPreimageIO;
 
 type Inner = Box<dyn KeyValueStore + Send + Sync>;
 
@@ -16,10 +14,10 @@ pub struct TracingKeyValueStore {
 }
 
 impl TracingKeyValueStore {
-    pub fn new(inner: Inner ) -> Self {
+    pub fn new(inner: Inner) -> Self {
         Self {
             inner,
-            used: hashbrown::HashMap::default()
+            used: hashbrown::HashMap::default(),
         }
     }
 }
@@ -36,7 +34,7 @@ impl KeyValueStore for TracingKeyValueStore {
     }
 }
 
-pub fn encode_to_bytes(used: HashMap<PreimageKey, Vec<u8>>) -> Vec<u8> {
+pub fn encode_to_bytes(used: hashbrown::HashMap<PreimageKey, Vec<u8>>) -> Vec<u8> {
     let mut temp: Vec<Preimage> = Vec::with_capacity(used.len());
     for (k, v) in used.iter() {
         temp.push(Preimage::new(k.clone(), v.clone()));

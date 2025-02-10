@@ -1,17 +1,49 @@
-use crate::webapp::DerivationState;
-use anyhow::Context;
+use crate::host::single::cli::SingleChainHostCli;
+use crate::host::single::orchestrator::DerivationRequest;
+use alloy_primitives::B256;
+use anyhow::{Chain, Context, Result};
 use axum::extract::State;
 use axum::http::StatusCode;
+use axum::routing::{get, post};
 use axum::Json;
 use kona_preimage::{CommsClient, HintWriterClient, PreimageOracleClient};
 use log::info;
+use maili_genesis::RollupConfig;
 use serde::{Deserialize, Serialize};
 use std::fmt::Debug;
 use std::sync::Arc;
-use alloy_primitives::B256;
-use kona_host::HostOrchestrator;
-use tokio::sync::oneshot;
-use crate::host::single::orchestrator::DerivationRequest;
+use tokio::net::TcpListener;
+use tokio::sync::mpsc::Sender;
+use tokio::sync::{mpsc, oneshot};
+use tokio::task::JoinHandle;
+
+pub struct DerivationState {
+    pub rollup_config: RollupConfig,
+    pub config: SingleChainHostCli,
+    pub l2_chain_id: u64,
+}
+
+async fn start_http_server(addr: &str, derivation_state: DerivationState) -> Result<()> {
+    let app = axum::Router::new()
+        .route("/derivation", post(derivation))
+        .with_state(Arc::new(derivation_state));
+
+    let listener = TcpListener::bind(addr).await?;
+    tracing::info!("listening on {}", addr);
+    axum::serve(listener, app).await?;
+    Ok(())
+}
+
+pub fn start_http_server_task(addr: &str, state: DerivationState) -> JoinHandle<Result<()>> {
+    let addr = addr.to_string();
+    tokio::spawn(async move {
+        start_http_server(&addr, state)
+            .await
+            .context("http server error")
+    })
+}
+
+// handler
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct Request {
@@ -22,9 +54,9 @@ pub struct Request {
     pub l2_block_number: u64,
 }
 
-pub async fn derivation(
+async fn derivation(
     State(state): State<Arc<DerivationState>>,
-    Json(payload): Json<Request>,
+    Json(payload): Json<crate::server::Request>,
 ) -> (StatusCode, Vec<u8>) {
     info!("derivation request: {:?}", payload);
     let derivation = DerivationRequest {
@@ -41,7 +73,7 @@ pub async fn derivation(
         Ok(preimage) => {
             info!("derivation success");
             (StatusCode::OK, preimage)
-        },
+        }
         Err(e) => {
             info!("failed to run derivation: {:?}", e);
             (StatusCode::INTERNAL_SERVER_ERROR, vec![])

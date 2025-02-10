@@ -1,5 +1,5 @@
-pub mod orchestrator;
+pub mod cli;
 pub mod fetcher;
 pub mod local_kv;
-pub mod cli;
+pub mod orchestrator;
 mod trace;
