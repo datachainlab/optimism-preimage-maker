@@ -71,9 +71,19 @@ pub struct SyncStatus {
 }
 
 #[derive(Debug, Clone, serde::Deserialize)]
+pub struct L2BlockRef {
+    pub hash: B256,
+    pub number: u64,
+    #[serde(rename = "l1origin")]
+    pub l1_origin: L1Origin
+}
+
+#[derive(Debug, Clone, serde::Deserialize)]
 pub struct OutputRootAtBlock {
     #[serde(rename = "outputRoot")]
     pub output_root: B256,
+    #[serde(rename = "blockRef")]
+    pub block_ref: L2BlockRef,
 }
 
 #[derive(Debug, Clone, serde::Deserialize)]
@@ -153,7 +163,7 @@ impl L2Client {
         Ok(result.result)
     }
 
-    pub async fn output_root_at(&self, number: u64) -> Result<B256> {
+    pub async fn output_root_at(&self, number: u64) -> Result<OutputRootAtBlock> {
         let client = reqwest::Client::new();
         let body = RpcRequest {
             method: "optimism_outputAtBlock".into(),
@@ -168,7 +178,7 @@ impl L2Client {
             .await?;
         let response = self.check_response(response).await?;
         let result: RpcResult<OutputRootAtBlock> = response.json().await?;
-        Ok(result.result.output_root)
+        Ok(result.result)
     }
 
     pub async fn get_block_by_number(&self, number: u64) -> Result<Block> {
