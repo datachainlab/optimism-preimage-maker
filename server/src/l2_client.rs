@@ -75,7 +75,7 @@ pub struct L2BlockRef {
     pub hash: B256,
     pub number: u64,
     #[serde(rename = "l1origin")]
-    pub l1_origin: L1Origin
+    pub l1_origin: L1Origin,
 }
 
 #[derive(Debug, Clone, serde::Deserialize)]

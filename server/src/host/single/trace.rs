@@ -5,31 +5,41 @@ use anyhow::Result;
 use kona_host::KeyValueStore;
 use kona_preimage::PreimageKey;
 use optimism_derivation::types::{Preimage, Preimages};
+use std::sync::{Arc, Mutex};
 
 type Inner = Box<dyn KeyValueStore + Send + Sync>;
 
 pub struct TracingKeyValueStore {
     pub inner: Inner,
-    pub used: hashbrown::HashMap<PreimageKey, Vec<u8>>,
+    pub used: Arc<Mutex<hashbrown::HashMap<PreimageKey, Vec<u8>>>>,
 }
 
 impl TracingKeyValueStore {
     pub fn new(inner: Inner) -> Self {
         Self {
             inner,
-            used: hashbrown::HashMap::default(),
+            used: Default::default(),
         }
     }
 }
 
 impl KeyValueStore for TracingKeyValueStore {
     fn get(&self, key: B256) -> Option<Vec<u8>> {
-        self.inner.get(key)
+        let v = self.inner.get(key);
+        if let Some(value) = &v {
+            let mut lock = self.used.lock().unwrap();
+            let k = PreimageKey::try_from(key.0).unwrap();
+            if !lock.contains_key(&k) {
+                lock.insert(k, value.clone());
+            }
+        }
+        v
     }
 
     fn set(&mut self, key: B256, value: Vec<u8>) -> Result<()> {
         self.inner.set(key, value.clone())?;
-        self.used.insert(PreimageKey::try_from(key.0)?, value);
+        let mut lock = self.used.lock().unwrap();
+        lock.insert(PreimageKey::try_from(key.0)?, value);
         Ok(())
     }
 }

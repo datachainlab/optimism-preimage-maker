@@ -13,17 +13,20 @@ async fn test_make_preimages() {
     let finalized_l2 = sync_status.finalized_l2.number;
     let claiming_l2_number = finalized_l2 - BEHIND;
     let agreed_l2_number = claiming_l2_number - L2_COUNT;
-    let claiming_output= l2_client.output_root_at(claiming_l2_number).await.unwrap();
+    let claiming_output = l2_client.output_root_at(claiming_l2_number).await.unwrap();
     let agreed_l2_hash = l2_client
         .get_block_by_number(agreed_l2_number)
         .await
         .unwrap()
         .hash;
-    let agreed_output= l2_client.output_root_at(agreed_l2_number).await.unwrap();
-    println!("claimed_output: l1_origin={:?} l1={:?}", claiming_output.block_ref.l1_origin.number, sync_status.finalized_l1.number);
+    let agreed_output = l2_client.output_root_at(agreed_l2_number).await.unwrap();
+    println!(
+        "claimed_output: l1_origin={:?} l1={:?}",
+        claiming_output.block_ref.l1_origin.number, sync_status.finalized_l1.number
+    );
 
     let request = Request {
-        l1_head_hash: claiming_output.block_ref.l1_origin.hash,
+        l1_head_hash: sync_status.finalized_l1.hash,
         agreed_l2_head_hash: agreed_l2_hash,
         agreed_l2_output_root: agreed_output.output_root,
         l2_output_root: claiming_output.output_root,

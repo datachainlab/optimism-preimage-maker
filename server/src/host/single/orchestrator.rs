@@ -126,6 +126,10 @@ impl DerivationRequest {
             let mut lock = kv_store.write().await;
             std::mem::take(&mut lock.used)
         };
+        let used = {
+            let mut lock = used.lock().unwrap();
+            std::mem::take(&mut *lock)
+        };
         let preimage = encode_to_bytes(used);
         tracing::info!("Preimage size: {}", preimage.len());
         Ok(preimage)
