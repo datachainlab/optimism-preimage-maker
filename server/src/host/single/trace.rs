@@ -11,7 +11,7 @@ type Inner = Box<dyn KeyValueStore + Send + Sync>;
 
 pub struct TracingKeyValueStore {
     pub inner: Inner,
-    pub used: Arc<Mutex<hashbrown::HashMap<PreimageKey, Vec<u8>>>>,
+    pub used: hashbrown::HashMap<PreimageKey, Vec<u8>>,
 }
 
 impl TracingKeyValueStore {
@@ -25,21 +25,12 @@ impl TracingKeyValueStore {
 
 impl KeyValueStore for TracingKeyValueStore {
     fn get(&self, key: B256) -> Option<Vec<u8>> {
-        let v = self.inner.get(key);
-        if let Some(value) = &v {
-            let mut lock = self.used.lock().unwrap();
-            let k = PreimageKey::try_from(key.0).unwrap();
-            if !lock.contains_key(&k) {
-                lock.insert(k, value.clone());
-            }
-        }
-        v
+        self.inner.get(key)
     }
 
     fn set(&mut self, key: B256, value: Vec<u8>) -> Result<()> {
         self.inner.set(key, value.clone())?;
-        let mut lock = self.used.lock().unwrap();
-        lock.insert(PreimageKey::try_from(key.0)?, value);
+        self.used.insert(PreimageKey::try_from(key.0)?, value);
         Ok(())
     }
 }
