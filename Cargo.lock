@@ -3081,18 +3081,23 @@ name = "optimism-derivation"
 version = "0.1.0"
 dependencies = [
  "alloy-consensus",
+ "alloy-eips",
  "alloy-primitives",
  "anyhow",
+ "async-trait",
+ "hashbrown 0.15.2",
  "kona-driver",
  "kona-executor",
  "kona-mpt",
  "kona-preimage",
  "kona-proof",
+ "kzg-rs",
  "maili-genesis",
  "prost",
  "prost-derive",
  "revm",
  "serde",
+ "sha2",
  "thiserror 2.0.11",
  "tracing",
 ]
@@ -3727,7 +3732,6 @@ dependencies = [
  "c-kzg",
  "cfg-if",
  "k256",
- "kzg-rs",
  "once_cell",
  "p256",
  "revm-primitives",
@@ -3754,7 +3758,6 @@ dependencies = [
  "dyn-clone",
  "enumn",
  "hex",
- "kzg-rs",
  "serde",
 ]
 
@@ -4273,9 +4276,9 @@ dependencies = [
 
 [[package]]
 name = "sp1-lib"
-version = "4.1.1"
+version = "4.1.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "fab1b5989a446f294724cebab0e759ffd7034ba93d2aa7b97045303f7c50bf74"
+checksum = "82bf9bf66dc9244c51585c72e3b82b48b7829ee909a8cc93d2101612c28f5030"
 dependencies = [
  "bincode",
  "serde",
@@ -4284,9 +4287,9 @@ dependencies = [
 
 [[package]]
 name = "sp1-primitives"
-version = "4.1.1"
+version = "4.1.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "1cf66c2781c36037c94a5905b6e05e7396fd4d12df09cd7f05cf96e3f0889f49"
+checksum = "2df15132358d645a2842fa127ea37954d28fd70127c0c6fcc254219c10824427"
 dependencies = [
  "bincode",
  "hex",

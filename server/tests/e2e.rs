@@ -7,8 +7,8 @@ async fn test_make_preimages() {
     let op_geth_addr = "http://localhost:9545".to_string();
     let l2_client = l2_client::L2Client::new(op_node_addr.to_string(), op_geth_addr.to_string());
 
-    const BEHIND: u64 = 10;
-    const L2_COUNT: u64 = 100;
+    const BEHIND: u64 = 1;
+    const L2_COUNT: u64 = 2;
     let sync_status = l2_client.sync_status().await.unwrap();
     let finalized_l2 = sync_status.finalized_l2.number;
     let claiming_l2_number = finalized_l2 - BEHIND;

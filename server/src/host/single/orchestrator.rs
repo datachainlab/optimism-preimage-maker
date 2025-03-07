@@ -4,7 +4,7 @@ use crate::host::single::cli::SingleChainHostCli;
 use crate::host::single::fetcher::SingleChainFetcher;
 use crate::host::single::local_kv::LocalKeyValueStore;
 use crate::host::single::trace::{encode_to_bytes, TracingKeyValueStore};
-use alloy_primitives::B256;
+use alloy_primitives::{keccak256, B256};
 use alloy_provider::ReqwestProvider;
 use alloy_rpc_client::RpcClient;
 use alloy_transport_http::Http;
@@ -20,8 +20,12 @@ use kona_providers_alloy::{OnlineBeaconClient, OnlineBlobProvider};
 use maili_genesis::RollupConfig;
 use reqwest::Client;
 use std::sync::Arc;
+use std::sync::atomic::Ordering;
+use optimism_derivation::oracle::MemoryOracleClient;
+use optimism_derivation::types::Preimages;
 use tokio::sync::RwLock;
 use tokio::task;
+use crate::host::single::oracle::TestOracleClient;
 
 #[derive(Debug, Clone)]
 pub struct DerivationRequest {
@@ -116,25 +120,73 @@ impl DerivationRequest {
             .start(),
         );
         let client_task = task::spawn(Self::run_client_native(
+            HintWriter::new(hint.client.clone()),
+            OracleReader::new(preimage.client.clone()),
+        ));
+        let result = client_task.await;
+        {
+            let v = kv_store.read().await;
+            let set = v.set_count.load(Ordering::Relaxed);
+            let get = v.get_count.load(Ordering::Relaxed);
+            tracing::info!("First Client result: {:?} set={}, get={}", result, set, get);
+        }
+
+        kv_store.write().await.should_check = true;
+        let client_task = task::spawn(Self::run_client_native(
             HintWriter::new(hint.client),
             OracleReader::new(preimage.client),
         ));
-
         let (_, client_result) = tokio::try_join!(server_task, client_task)?;
-        tracing::info!("Client result: {:?}", client_result);
+        {
+            let v = kv_store.read().await;
+            let set = v.set_count.load(Ordering::Relaxed);
+            let get = v.get_count.load(Ordering::Relaxed);
+            tracing::info!("Second Client result: {:?} set={}, get={}", result, set, get);
+        }
         let used = {
             let mut lock = kv_store.write().await;
             std::mem::take(&mut lock.used)
         };
-        /*
-        let used = {
-            let mut lock = used.lock().unwrap();
-            std::mem::take(&mut *lock)
+        let used_raw = {
+            let mut lock = kv_store.write().await;
+            std::mem::take(&mut lock.used_raw)
         };
-         */
+
+        tracing::info!("Diff {} {}", used.len(), used_raw.len());
+        for key in used_raw {
+            if used.get(&key).is_none() {
+                tracing::error!("Missing key: {:?}", key);
+            }
+        }
+
+        let entry_size = used.len();
         let preimage = encode_to_bytes(used);
-        tracing::info!("Preimage size: {}", preimage.len());
-        Ok(preimage)
+        let data = preimage.preimages.clone();
+        let preimage_bytes : Vec<u8> = preimage.into_vec().unwrap();
+        let preimage_hash = keccak256(&preimage_bytes);
+        tracing::info!("Preimage entry: {}, size: {}, hash: {}", entry_size, preimage_bytes.len(), preimage_hash);
+
+        // dry run
+        tracing::info!("Dry run start");
+        let oracle = MemoryOracleClient::try_from(data).unwrap();
+
+        tracing::info!("Dry run start");
+        //let oracle = TestOracleClient {
+         //   preimages: kv_store
+        //};
+        let derivation = optimism_derivation::derivation::Derivation::new(
+            self.l1_head_hash,
+            self.agreed_l2_output_root,
+            self.l2_output_root,
+            self.l2_block_number,
+        );
+        let dry_run_result = derivation.verify(self.l2_chain_id, &self.rollup_config, oracle);
+        match dry_run_result {
+            Ok(_) => tracing::info!("Dry run success"),
+            Err(e) => tracing::error!("Dry run failed: {:?}", e),
+        }
+
+        Ok(preimage_bytes)
     }
 }
 
