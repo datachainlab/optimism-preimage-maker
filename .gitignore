@@ -25,3 +25,4 @@ target/
 /.data
 *.bin
 *.json
+chain

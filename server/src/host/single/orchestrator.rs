@@ -4,7 +4,7 @@ use crate::host::single::cli::SingleChainHostCli;
 use crate::host::single::fetcher::SingleChainFetcher;
 use crate::host::single::local_kv::LocalKeyValueStore;
 use crate::host::single::trace::{encode_to_bytes, TracingKeyValueStore};
-use alloy_primitives::{keccak256, B256};
+use alloy_primitives::B256;
 use alloy_provider::ReqwestProvider;
 use alloy_rpc_client::RpcClient;
 use alloy_transport_http::Http;
@@ -20,9 +20,6 @@ use kona_providers_alloy::{OnlineBeaconClient, OnlineBlobProvider};
 use maili_genesis::RollupConfig;
 use reqwest::Client;
 use std::sync::Arc;
-use std::sync::atomic::Ordering;
-use optimism_derivation::oracle::MemoryOracleClient;
-use optimism_derivation::types::Preimages;
 use tokio::sync::RwLock;
 use tokio::task;
 
@@ -56,7 +53,7 @@ impl DerivationRequest {
         let blob_provider = OnlineBlobProvider::init(OnlineBeaconClient::new_http(
             self.config.l1_beacon_address.clone(),
         ))
-        .await;
+            .await;
         let l2_provider = http_provider(self.config.l2_node_address.as_str());
 
         Ok(Some(SingleChainProviders {
@@ -116,30 +113,30 @@ impl DerivationRequest {
                 kv_store.clone(),
                 fetcher,
             )
-            .start(),
+                .start(),
         );
         let client_task = task::spawn(Self::run_client_native(
-            HintWriter::new(hint.client.clone()),
-            OracleReader::new(preimage.client.clone()),
+            HintWriter::new(hint.client),
+            OracleReader::new(preimage.client),
         ));
+
         let (_, client_result) = tokio::try_join!(server_task, client_task)?;
-        let used = {
-            let mut lock = kv_store.write().await;
-            std::mem::take(&mut lock.used)
-        };
         match client_result {
-            Ok(_) => tracing::info!("Derivation succeeded"),
+            Ok(_) => {
+                let used = {
+                    let mut lock = kv_store.write().await;
+                    std::mem::take(&mut lock.used)
+                };
+                let entry_size = used.len();
+                let preimage = encode_to_bytes(used);
+                let preimage_bytes : Vec<u8> = preimage.into_vec().unwrap();
+                tracing::info!("Preimage entry: {}, size: {}", entry_size, preimage_bytes.len());
+                Ok(preimage_bytes)
+            }
             Err(e) => {
-                tracing::error!("Derivation failed: {:?}", e);
-                return Err(e);
+                Err(e)
             }
         }
-
-        let entry_size = used.len();
-        let preimage = encode_to_bytes(used);
-        let preimage_bytes : Vec<u8> = preimage.into_vec().unwrap();
-        tracing::info!("Preimage entry: {}, size: {}", entry_size, preimage_bytes.len());
-        Ok(preimage_bytes)
     }
 }
 

@@ -1,9 +1,8 @@
 use optimism_preimage_maker::{l2_client, Request};
-use std::fs;
 use std::time::Duration;
 
 #[tokio::test]
-async fn test_make_preimages() {
+async fn test_loop() {
     let op_node_addr = "http://localhost:7545".to_string();
     let op_geth_addr = "http://localhost:9545".to_string();
     let l2_client = l2_client::L2Client::new(op_node_addr.to_string(), op_geth_addr.to_string());
@@ -23,7 +22,7 @@ async fn test_make_preimages() {
     loop {
         let claiming_l2_number = finalized_l2;
         let claiming_output = l2_client.output_root_at(claiming_l2_number).await.unwrap();
-        println!(
+        tracing::info!(
             "claimed_output: l1_origin={:?} l1={:?}",
             claiming_output.block_ref.l1_origin.number, sync_status.finalized_l1.number
         );

@@ -7,8 +7,8 @@ async fn test_make_preimages() {
     let op_geth_addr = "http://localhost:9545".to_string();
     let l2_client = l2_client::L2Client::new(op_node_addr.to_string(), op_geth_addr.to_string());
 
-    const BEHIND: u64 = 1;
-    const L2_COUNT: u64 = 2;
+    const BEHIND: u64 = 10;
+    const L2_COUNT: u64 = 20;
     let sync_status = l2_client.sync_status().await.unwrap();
     let finalized_l2 = sync_status.finalized_l2.number;
     let claiming_l2_number = finalized_l2 - BEHIND;
@@ -20,7 +20,7 @@ async fn test_make_preimages() {
         .unwrap()
         .hash;
     let agreed_output = l2_client.output_root_at(agreed_l2_number).await.unwrap();
-    println!(
+    tracing::info!(
         "claimed_output: l1_origin={:?} l1={:?}",
         claiming_output.block_ref.l1_origin.number, sync_status.finalized_l1.number
     );
@@ -32,7 +32,7 @@ async fn test_make_preimages() {
         l2_output_root: claiming_output.output_root,
         l2_block_number: claiming_l2_number,
     };
-    println!("request: {:?}", request);
+    tracing::info!("request: {:?}", request);
 
     let client = reqwest::Client::new();
     let builder = client.post("http://localhost:10080/derivation");

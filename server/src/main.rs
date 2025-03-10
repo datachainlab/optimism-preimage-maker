@@ -20,8 +20,7 @@ async fn main() -> anyhow::Result<()> {
 
     // start tracing
     let filter = filter::EnvFilter::from_default_env()
-        .add_directive("optimism_preimage_maker=info".parse()?)
-        .add_directive("optimism_derivation=info".parse()?);
+        .add_directive("info".parse()?);
     tracing_subscriber::registry()
         .with(tracing_subscriber::fmt::layer())
         .with(filter)
