@@ -26,7 +26,7 @@ use maili_protocol::BlockInfo;
 use op_alloy_rpc_types_engine::OpPayloadAttributes;
 use std::sync::Arc;
 use tokio::sync::RwLock;
-use tracing::{error, info, trace, warn};
+use tracing::{error, trace, warn};
 
 /// The [SingleChainFetcher] struct is responsible for fetching preimages from a remote source.
 #[derive(Debug)]
@@ -234,15 +234,15 @@ where
                     precompile_address,
                     precompile_input,
                 )
-                .map_or_else(
-                    |_| vec![0u8; 1],
-                    |raw_res| {
-                        let mut res = Vec::with_capacity(1 + raw_res.len());
-                        res.push(0x01);
-                        res.extend_from_slice(&raw_res);
-                        res
-                    },
-                );
+                    .map_or_else(
+                        |_| vec![0u8; 1],
+                        |raw_res| {
+                            let mut res = Vec::with_capacity(1 + raw_res.len());
+                            res.push(0x01);
+                            res.extend_from_slice(&raw_res);
+                            res
+                        },
+                    );
 
                 // Acquire a lock on the key-value store and set the preimages.
                 let mut kv_lock = self.kv_store.write().await;
@@ -292,7 +292,7 @@ where
                     .as_ref()
                     .try_into()
                     .map_err(|e| anyhow!("Failed to convert bytes to B256: {e}"))?;
-                let Block { header, transactions, .. } = self
+                let Block { transactions, .. } = self
                     .l2_provider
                     .get_block_by_hash(hash, BlockTransactionsKind::Hashes)
                     .await
@@ -312,18 +312,8 @@ where
                             encoded_transactions.push(tx);
                         }
 
-                        let keys = self.store_trie_nodes(encoded_transactions.as_slice())
+                        self.store_trie_nodes(encoded_transactions.as_slice())
                             .await?;
-                        let mut found = false;
-                        for key in keys {
-                            if header.inner.transactions_root == key {
-                                found = true;
-                                break;
-                            }
-                        }
-                        if !found {
-                            error!("L2 Transaction root does not match preimage key {:?} ", header.inner.transactions_root);
-                        }
                     }
                     _ => anyhow::bail!("Only BlockTransactions::Hashes are supported."),
                 };
@@ -550,7 +540,7 @@ where
     }
 
     /// Stores a list of [BlockTransactions] in the key-value store.
-    async fn store_transactions(&self, transactions: BlockTransactions<Transaction>) -> Result<Vec<B256>> {
+    async fn store_transactions(&self, transactions: BlockTransactions<Transaction>) -> Result<()> {
         match transactions {
             BlockTransactions::Full(transactions) => {
                 let encoded_transactions = transactions
@@ -570,7 +560,7 @@ where
 
     /// Stores intermediate trie nodes in the key-value store. Assumes that all nodes passed are
     /// raw, RLP encoded trie nodes.
-    async fn store_trie_nodes<T: AsRef<[u8]>>(&self, nodes: &[T]) -> Result<Vec<B256>> {
+    async fn store_trie_nodes<T: AsRef<[u8]>>(&self, nodes: &[T]) -> Result<()> {
         let mut kv_write_lock = self.kv_store.write().await;
 
         // If the list of nodes is empty, store the empty root hash and exit early.
@@ -578,8 +568,7 @@ where
         // `ProofRetainer` in the event that there are no leaves inserted.
         if nodes.is_empty() {
             let empty_key = PreimageKey::new(*EMPTY_ROOT_HASH, PreimageKeyType::Keccak256);
-            kv_write_lock.set(empty_key.into(), [EMPTY_STRING_CODE].into())?;
-            return Ok(vec![EMPTY_ROOT_HASH]);
+            return kv_write_lock.set(empty_key.into(), [EMPTY_STRING_CODE].into());
         }
 
         let mut hb = kona_mpt::ordered_trie_with_encoder(nodes, |node, buf| {
@@ -588,15 +577,14 @@ where
         hb.root();
         let intermediates = hb.take_proof_nodes().into_inner();
 
-        let mut keys = vec![];
         for (_, value) in intermediates.into_iter() {
             let value_hash = keccak256(value.as_ref());
             let key = PreimageKey::new(*value_hash, PreimageKeyType::Keccak256);
-            keys.push(value_hash);
+
             kv_write_lock.set(key.into(), value.into())?;
         }
 
-        Ok(keys)
+        Ok(())
     }
 }
 

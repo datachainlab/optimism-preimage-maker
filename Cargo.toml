@@ -6,17 +6,9 @@ members = [
 
 [workspace.dependencies]
 anyhow = { version="1.0", default-features = false }
-thiserror = { version="2.0", default-features = false }
 hashbrown = "0.15.1"
 serde = { version = "1.0.210", default-features = false, features = ["derive"] }
 serde_json = { version = "1.0.128", default-features = false }
-rlp = { version = "0.5.2", default-features = false }
-prost = { version = "0.11", default-features = false }
-sha2 = { version = "0.10.8", default-features = false }
-
-# Ethereum-IBC
-ethereum-ibc = { git = "https://github.com/yoshidan/ethereum-ibc-rs", branch= "feature/for_op_elc", default-features = false }
-ethereum-ibc-proto = { git = "https://github.com/yoshidan/ethereum-ibc-rs", branch = "feature/for_op_elc", default-features = false }
 
 # Kona
 kona-mpt = { git="https://github.com/anton-rs/kona", rev= "kona-providers-alloy-v0.1.0", default-features = false }
@@ -24,8 +16,6 @@ kona-client = { git="https://github.com/anton-rs/kona", rev= "kona-providers-all
 kona-host = { git="https://github.com/anton-rs/kona", rev= "kona-providers-alloy-v0.1.0", default-features = false }
 kona-proof = { git="https://github.com/anton-rs/kona", rev= "kona-providers-alloy-v0.1.0", default-features = false }
 kona-preimage = {git="https://github.com/anton-rs/kona", rev= "kona-providers-alloy-v0.1.0", default-features = false }
-kona-executor = { git="https://github.com/anton-rs/kona", rev= "kona-providers-alloy-v0.1.0", default-features = false }
-kona-driver = { git="https://github.com/anton-rs/kona", rev= "kona-providers-alloy-v0.1.0", default-features = false }
 kona-providers-alloy= { git="https://github.com/anton-rs/kona", rev= "kona-providers-alloy-v0.1.0", default-features = false }
 
 # Maili
@@ -42,9 +32,6 @@ alloy-rpc-types = { version = "0.9.2", default-features = false  }
 alloy-rpc-client = { version = "0.9.2", default-features = false }
 alloy-primitives = { version = "0.8.14", default-features = false }
 alloy-transport-http = { version = "0.9.2", default-features = false }
-
-# Ethereum
-revm = { version = "19.3.0", default-features = false }
 
 # OP Alloy
 op-alloy-rpc-types-engine = { version = "0.9.5", default-features = false }
