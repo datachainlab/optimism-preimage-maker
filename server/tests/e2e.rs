@@ -3,8 +3,8 @@ use std::fs;
 
 #[tokio::test]
 async fn test_make_preimages() {
-    let op_node_addr = "http://localhost:7545".to_string();
-    let op_geth_addr = "http://localhost:9545".to_string();
+    let op_node_addr = "http://localhost:62265".to_string();
+    let op_geth_addr = "http://localhost:62255".to_string();
     let l2_client = l2_client::L2Client::new(op_node_addr.to_string(), op_geth_addr.to_string());
 
     const BEHIND: u64 = 10;
