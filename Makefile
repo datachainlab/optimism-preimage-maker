@@ -1,30 +1,22 @@
 .PHONY: chain
 chain:
-	git clone --depth 1 -b v1.10.0 https://github.com/ethereum-optimism/optimism ./chain
-	sed 's/v5.2.1/v6.0.1/g' chain/ops-bedrock/l1-lighthouse.Dockerfile > chain/ops-bedrock/l1-lighthouse.Dockerfile.tmp
-	mv chain/ops-bedrock/l1-lighthouse.Dockerfile.tmp chain/ops-bedrock/l1-lighthouse.Dockerfile
-	sed 's/port=9000/port=9000 --light-client-server/g' chain/ops-bedrock/l1-lighthouse-bn-entrypoint.sh > chain/ops-bedrock/l1-lighthouse-bn-entrypoint.sh.tmp
-	mv chain/ops-bedrock/l1-lighthouse-bn-entrypoint.sh.tmp chain/ops-bedrock/l1-lighthouse-bn-entrypoint.sh
+	git clone --depth 1 -b v1.11.2 https://github.com/ethereum-optimism/optimism ./chain
+	sed 's/teku/lodestar/g' chain/kurtosis-devnet/simple.yaml > chain/kurtosis-devnet/simple.yaml.tmp
+	mv chain/kurtosis-devnet/simple.yaml.tmp chain/kurtosis-devnet/simple.yaml
 
 .PHONY: devnet-up
 devnet-up:
-	make -C chain devnet-up
+	cd kurtosis-devnet
+	just simple-devnet
 
 .PHONY: devnet-down
 devnet-down:
-	make -C chain devnet-down
-
-.PHONY: devnet-clean
-devnet-clean:
-	make -C chain devnet-clean
+	kurtosis engine restart
+	kurtosis enclave ls | awk 'NR==2 {print $1}' | kurtosis enclave stop
+	kurtosis engine stop
+	docker network rm kt-simple-devnet
 
 .PHONY: status
 status:
 	curl -X POST localhost:7545 -d '{"method":"optimism_syncStatus", "jsonrpc": "2.0", "id":1, "params":[]}' -H "Content-Type: application/json" | jq .result.finalized_l2
-
-.PHONY: test
-test:
-	cargo test --manifest-path preimage-maker/Cargo.toml --test e2e
-	cargo test --manifest-path elc/light-client/Cargo.toml --lib oracle
-
 
