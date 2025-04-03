@@ -6,17 +6,39 @@ chain:
 
 .PHONY: devnet-up
 devnet-up:
-	cd kurtosis-devnet
-	just simple-devnet
+	cd chain/kurtosis-devnet && just simple-devnet
+
+.PHONY: set-port
+set-port:
+	scripts/port.sh
+
+.PHONY: status
+status:
+	@PORT=$$(jq -r '.l2RollupPort' hostPort.json);\
+	curl -X POST localhost:$$PORT -d '{"method":"optimism_syncStatus", "jsonrpc": "2.0", "id":1, "params":[]}' -H "Content-Type: application/json" | jq .result.finalized_l2
+
+.PHONY: server-up
+server-up:
+	@L2_ROLLUP_PORT=$$(jq -r '.l2RollupPort' hostPort.json);\
+	L2_GETH_PORT=$$(jq -r '.l2GethPort' hostPort.json);\
+	L1_GETH_PORT=$$(jq -r '.l1GethPort' hostPort.json);\
+	L1_BEACON_PORT=$$(jq -r '.l1BeaconPort' hostPort.json);\
+	cargo run --release --bin=optimism-preimage-maker -- \
+		--rollup=http://localhost:$$L2_ROLLUP_PORT \
+		--l2=http://localhost:$$L2_GETH_PORT \
+		--l1=http://localhost:$$L1_GETH_PORT \
+		--beacon=http://localhost:$$L1_BEACON_PORT
+
+.PHONY: test
+test:
+	@L2_ROLLUP_PORT=$$(jq -r '.l2RollupPort' hostPort.json);\
+	L2_GETH_PORT=$$(jq -r '.l2GethPort' hostPort.json);\
+	L2_ROLLUP_PORT=$$L2_ROLLUP_PORT L2_GETH_PORT=$$L2_GETH_PORT cargo test --manifest-path=./server/Cargo.toml
 
 .PHONY: devnet-down
 devnet-down:
 	kurtosis engine restart
-	kurtosis enclave ls | awk 'NR==2 {print $1}' | kurtosis enclave stop
+	@ENCLAVE=$$(kurtosis enclave ls | awk 'NR==2 {print $$1}'); kurtosis enclave stop $$ENCLAVE
 	kurtosis engine stop
 	docker network rm kt-simple-devnet
-
-.PHONY: status
-status:
-	curl -X POST localhost:7545 -d '{"method":"optimism_syncStatus", "jsonrpc": "2.0", "id":1, "params":[]}' -H "Content-Type: application/json" | jq .result.finalized_l2
 

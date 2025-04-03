@@ -1,10 +1,23 @@
 use optimism_preimage_maker::{l2_client, Request};
-use std::fs;
+use std::{env, fs};
+use tracing::info;
+use tracing_subscriber::filter;
+use tracing_subscriber::layer::SubscriberExt;
+use tracing_subscriber::util::SubscriberInitExt;
 
 #[tokio::test]
 async fn test_make_preimages() {
-    let op_node_addr = "http://localhost:52492".to_string();
-    let op_geth_addr = "http://localhost:52470".to_string();
+    let filter = filter::EnvFilter::from_default_env()
+        .add_directive("info".parse().unwrap());
+    tracing_subscriber::registry()
+        .with(tracing_subscriber::fmt::layer())
+        .with(filter)
+        .init();
+
+    let op_node_addr = format!("http://localhost:{}",env::var("L2_ROLLUP_PORT").unwrap());
+    let op_geth_addr = format!("http://localhost:{}", env::var("L2_GETH_PORT").unwrap());
+    info!("Starting with op_node_addr: {} op_geth_addr: {}", op_node_addr, op_geth_addr);
+
     let l2_client = l2_client::L2Client::new(op_node_addr.to_string(), op_geth_addr.to_string());
 
     const BEHIND: u64 = 10;
