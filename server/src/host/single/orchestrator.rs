@@ -53,7 +53,7 @@ impl DerivationRequest {
         let blob_provider = OnlineBlobProvider::init(OnlineBeaconClient::new_http(
             self.config.l1_beacon_address.clone(),
         ))
-            .await;
+        .await;
         let l2_provider = http_provider(self.config.l2_node_address.as_str());
 
         Ok(Some(SingleChainProviders {
@@ -113,7 +113,7 @@ impl DerivationRequest {
                 kv_store.clone(),
                 fetcher,
             )
-                .start(),
+            .start(),
         );
         let client_task = task::spawn(Self::run_client_native(
             HintWriter::new(hint.client),
@@ -129,13 +129,15 @@ impl DerivationRequest {
                 };
                 let entry_size = used.len();
                 let preimage = encode_to_bytes(used);
-                let preimage_bytes : Vec<u8> = preimage.into_vec().unwrap();
-                tracing::info!("Preimage entry: {}, size: {}", entry_size, preimage_bytes.len());
+                let preimage_bytes: Vec<u8> = preimage.into_vec().unwrap();
+                tracing::info!(
+                    "Preimage entry: {}, size: {}",
+                    entry_size,
+                    preimage_bytes.len()
+                );
                 Ok(preimage_bytes)
             }
-            Err(e) => {
-                Err(e)
-            }
+            Err(e) => Err(e),
         }
     }
 }

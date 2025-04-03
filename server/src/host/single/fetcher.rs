@@ -234,15 +234,15 @@ where
                     precompile_address,
                     precompile_input,
                 )
-                    .map_or_else(
-                        |_| vec![0u8; 1],
-                        |raw_res| {
-                            let mut res = Vec::with_capacity(1 + raw_res.len());
-                            res.push(0x01);
-                            res.extend_from_slice(&raw_res);
-                            res
-                        },
-                    );
+                .map_or_else(
+                    |_| vec![0u8; 1],
+                    |raw_res| {
+                        let mut res = Vec::with_capacity(1 + raw_res.len());
+                        res.push(0x01);
+                        res.extend_from_slice(&raw_res);
+                        res
+                    },
+                );
 
                 // Acquire a lock on the key-value store and set the preimages.
                 let mut kv_lock = self.kv_store.write().await;

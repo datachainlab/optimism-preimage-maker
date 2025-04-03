@@ -5,9 +5,6 @@ use anyhow::Result;
 use kona_host::KeyValueStore;
 use kona_preimage::PreimageKey;
 use optimism_derivation::types::{Preimage, Preimages};
-use std::sync::{Arc, Mutex};
-use std::sync::atomic::AtomicU64;
-use tracing::{error, info};
 
 type Inner = Box<dyn KeyValueStore + Send + Sync>;
 
@@ -32,7 +29,7 @@ impl KeyValueStore for TracingKeyValueStore {
 
     fn set(&mut self, key: B256, value: Vec<u8>) -> Result<()> {
         self.inner.set(key, value.clone())?;
-        self.used.insert( PreimageKey::try_from(key.0)?, value);
+        self.used.insert(PreimageKey::try_from(key.0)?, value);
         Ok(())
     }
 }
@@ -42,6 +39,6 @@ pub fn encode_to_bytes(used: hashbrown::HashMap<PreimageKey, Vec<u8>>) -> Preima
     for (k, v) in used.iter() {
         temp.push(Preimage::new(*k, v.clone()));
     }
-    let data = Preimages { preimages: temp };
-    data
+
+    Preimages { preimages: temp }
 }

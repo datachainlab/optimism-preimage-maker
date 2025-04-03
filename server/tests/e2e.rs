@@ -1,25 +1,28 @@
-use optimism_preimage_maker::{l2_client, Request};
-use std::{env};
 use optimism_derivation::derivation::Derivation;
 use optimism_derivation::oracle::MemoryOracleClient;
 use optimism_derivation::types::Preimages;
+use optimism_preimage_maker::{l2_client, Request};
+use prost::Message;
+use std::env;
 use tracing_subscriber::filter;
 use tracing_subscriber::layer::SubscriberExt;
 use tracing_subscriber::util::SubscriberInitExt;
-use prost::Message;
 
 #[tokio::test(flavor = "multi_thread")]
 async fn test_make_preimages() {
-    let filter = filter::EnvFilter::from_default_env()
-        .add_directive("info".parse().unwrap());
+    let filter = filter::EnvFilter::from_default_env().add_directive("info".parse().unwrap());
     tracing_subscriber::registry()
         .with(tracing_subscriber::fmt::layer())
         .with(filter)
         .init();
 
-    let op_node_addr = format!("http://localhost:{}",env::var("L2_ROLLUP_PORT").unwrap());
+    let op_node_addr = format!("http://localhost:{}", env::var("L2_ROLLUP_PORT").unwrap());
     let op_geth_addr = format!("http://localhost:{}", env::var("L2_GETH_PORT").unwrap());
-    tracing::info!("Starting with op_node_addr: {} op_geth_addr: {}", op_node_addr, op_geth_addr);
+    tracing::info!(
+        "Starting with op_node_addr: {} op_geth_addr: {}",
+        op_node_addr,
+        op_geth_addr
+    );
 
     let l2_client = l2_client::L2Client::new(op_node_addr.to_string(), op_geth_addr.to_string());
 
@@ -39,7 +42,8 @@ async fn test_make_preimages() {
     let agreed_output = l2_client.output_root_at(agreed_l2_number).await.unwrap();
     tracing::info!(
         "claimed_output: l1_origin={:?} l1={:?}",
-        claiming_output.block_ref.l1_origin.number, sync_status.finalized_l1.number
+        claiming_output.block_ref.l1_origin.number,
+        sync_status.finalized_l1.number
     );
 
     let request = Request {
