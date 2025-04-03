@@ -3129,6 +3129,7 @@ dependencies = [
  "maili-protocol",
  "op-alloy-rpc-types-engine",
  "optimism-derivation",
+ "prost",
  "reqwest",
  "serde",
  "serde_json",
@@ -3514,6 +3515,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "0b82eaa1d779e9a4bc1c3217db8ffbeabaae1dca241bf70183242128d48681cd"
 dependencies = [
  "bytes",
+ "prost-derive",
 ]
 
 [[package]]

@@ -46,3 +46,6 @@ op-alloy-rpc-types-engine = { workspace = true, features = ["serde"] }
 
 # optimism derivation
 optimism-derivation = { version = "0.1.0", path = "../../optimism-elc/derivation", default-features = false }
+
+[dev-dependencies]
+prost = "0.11.9"

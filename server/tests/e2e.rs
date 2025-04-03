@@ -1,11 +1,14 @@
 use optimism_preimage_maker::{l2_client, Request};
-use std::{env, fs};
-use tracing::info;
+use std::{env};
+use optimism_derivation::derivation::Derivation;
+use optimism_derivation::oracle::MemoryOracleClient;
+use optimism_derivation::types::Preimages;
 use tracing_subscriber::filter;
 use tracing_subscriber::layer::SubscriberExt;
 use tracing_subscriber::util::SubscriberInitExt;
+use prost::Message;
 
-#[tokio::test]
+#[tokio::test(flavor = "multi_thread")]
 async fn test_make_preimages() {
     let filter = filter::EnvFilter::from_default_env()
         .add_directive("info".parse().unwrap());
@@ -16,12 +19,13 @@ async fn test_make_preimages() {
 
     let op_node_addr = format!("http://localhost:{}",env::var("L2_ROLLUP_PORT").unwrap());
     let op_geth_addr = format!("http://localhost:{}", env::var("L2_GETH_PORT").unwrap());
-    info!("Starting with op_node_addr: {} op_geth_addr: {}", op_node_addr, op_geth_addr);
+    tracing::info!("Starting with op_node_addr: {} op_geth_addr: {}", op_node_addr, op_geth_addr);
 
     let l2_client = l2_client::L2Client::new(op_node_addr.to_string(), op_geth_addr.to_string());
 
     const BEHIND: u64 = 10;
     const L2_COUNT: u64 = 20;
+    let chain_id = l2_client.chain_id().await.unwrap();
     let sync_status = l2_client.sync_status().await.unwrap();
     let finalized_l2 = sync_status.finalized_l2.number;
     let claiming_l2_number = finalized_l2 - BEHIND;
@@ -53,16 +57,19 @@ async fn test_make_preimages() {
     let preimage_bytes = preimage_bytes.bytes().await.unwrap();
     let rollup_config = l2_client.rollup_config().await.unwrap();
 
-    fs::create_dir("../testdata");
-    fs::write(
-        "../testdata/derivation.json",
-        serde_json::to_vec(&request).unwrap(),
-    )
-    .unwrap();
-    fs::write("../testdata/preimage.bin", preimage_bytes).unwrap();
-    fs::write(
-        "../testdata/rollup_config.json",
-        serde_json::to_vec(&rollup_config).unwrap(),
-    )
-    .unwrap();
+    tracing::info!("start derivation ");
+    let preimages = Preimages::decode(preimage_bytes).unwrap();
+    let oracle = MemoryOracleClient::try_from(preimages.preimages).unwrap();
+    let derivation = Derivation::new(
+        request.l1_head_hash,
+        request.agreed_l2_output_root,
+        request.l2_output_root,
+        request.l2_block_number,
+    );
+
+    let result = derivation.verify(chain_id, &rollup_config, oracle);
+    match result {
+        Ok(h) => tracing::info!("Derivation verified successfully {:? }", h),
+        Err(e) => tracing::error!("Derivation verification failed: {:?}", e),
+    }
 }
