@@ -11,10 +11,10 @@ jobs:
     name: lint
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v2
+      - uses: actions/checkout@v4
         with:
-          ref: ${{ github.event.pull_request.head.ref }}
-          repository: ${{github.event.pull_request.head.repo.full_name}}
+          submodules: recursive
+          fetch-depth: 0
       - uses: actions/cache@v4
         with:
           path: |
@@ -40,10 +40,10 @@ jobs:
     name: test
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v2
+      - uses: actions/checkout@v4
         with:
-          ref: ${{ github.event.pull_request.head.ref }}
-          repository: ${{github.event.pull_request.head.repo.full_name}}
+          submodules: recursive
+          fetch-depth: 0
       - uses: actions/cache@v4
         with:
           path: |
@@ -57,14 +57,16 @@ jobs:
       - uses: extractions/setup-just@v2
         with:
           just-version: 1.40.0
-      - name: install kurtosis
+      - name: Install Foundry
+        uses: foundry-rs/foundry-toolchain@v1
+      - name: Install kurtosis
         run: |
           sudo apt-get install jq
           echo "deb [trusted=yes] https://apt.fury.io/kurtosis-tech/ /" | sudo tee /etc/apt/sources.list.d/kurtosis.list
           sudo apt update
           sudo apt remove kurtosis-cli
           sudo apt install kurtosis-cli=1.4.3 -V
-      - name: start optimism
+      - name: Start optimism
         run: |
           make chain
           make devnet-up
