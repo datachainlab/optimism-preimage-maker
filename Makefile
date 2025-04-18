@@ -15,7 +15,7 @@ set-port:
 .PHONY: status
 status:
 	@PORT=$$(jq -r '.l2RollupPort' hostPort.json);\
-	curl -X POST localhost:$$PORT -d '{"method":"optimism_syncStatus", "jsonrpc": "2.0", "id":1, "params":[]}' -H "Content-Type: application/json" | jq .result.finalized_l2
+	curl -X POST localhost:$$PORT -d '{"method":"optimism_syncStatus", "jsonrpc": "2.0", "id":1, "params":[]}' -H "Content-Type: application/json" | jq .result
 
 .PHONY: server-up
 server-up:

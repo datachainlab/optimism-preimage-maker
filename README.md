@@ -23,6 +23,3 @@ Wait until the sufficient(several hundred blocks) finalized l2 is found.
 make server-up
 make test
 ```
-
-## Development
-* Dependency in `Cargo.toml` must be same as `optimism-elc`

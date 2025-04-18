@@ -1,7 +1,6 @@
 //! [SingleChainHostCli]'s [HostOrchestrator] + [DetachedHostOrchestrator] implementations.
 
 use crate::host::single::cli::SingleChainHostCli;
-use crate::host::single::fetcher::SingleChainFetcher;
 use crate::host::single::local_kv::LocalKeyValueStore;
 use crate::host::single::trace::{encode_to_bytes, TracingKeyValueStore};
 use alloy_primitives::B256;
@@ -9,15 +8,17 @@ use alloy_provider::ReqwestProvider;
 use alloy_rpc_client::RpcClient;
 use alloy_transport_http::Http;
 use anyhow::Result;
+use kona_genesis::RollupConfig;
+use kona_host::single::{SingleChainHintHandler, SingleChainHost};
 use kona_host::{
-    Fetcher, HostOrchestrator, MemoryKeyValueStore, PreimageServer, SharedKeyValueStore,
-    SplitKeyValueStore,
+    MemoryKeyValueStore, OnlineHostBackend, OnlineHostBackendCfg, PreimageServer,
+    SharedKeyValueStore, SplitKeyValueStore,
 };
 use kona_preimage::{
     BidirectionalChannel, HintReader, HintWriter, NativeChannel, OracleReader, OracleServer,
 };
+use kona_proof::HintType;
 use kona_providers_alloy::{OnlineBeaconClient, OnlineBlobProvider};
-use maili_genesis::RollupConfig;
 use reqwest::Client;
 use std::sync::Arc;
 use tokio::sync::RwLock;
@@ -36,49 +37,7 @@ pub struct DerivationRequest {
     pub l2_block_number: u64,
 }
 
-/// The providers required for the single chain host.
-#[derive(Debug)]
-pub struct SingleChainProviders {
-    /// The L1 EL provider.
-    l1_provider: ReqwestProvider,
-    /// The L1 beacon node provider.
-    blob_provider: OnlineBlobProvider<OnlineBeaconClient>,
-    /// The L2 EL provider.
-    l2_provider: ReqwestProvider,
-}
-
 impl DerivationRequest {
-    async fn create_providers(&self) -> Result<Option<SingleChainProviders>> {
-        let l1_provider = http_provider(self.config.l1_node_address.as_ref());
-        let blob_provider = OnlineBlobProvider::init(OnlineBeaconClient::new_http(
-            self.config.l1_beacon_address.clone(),
-        ))
-        .await;
-        let l2_provider = http_provider(self.config.l2_node_address.as_str());
-
-        Ok(Some(SingleChainProviders {
-            l1_provider,
-            blob_provider,
-            l2_provider,
-        }))
-    }
-
-    fn create_fetcher(
-        &self,
-        providers: Option<SingleChainProviders>,
-        kv_store: SharedKeyValueStore,
-    ) -> Option<Arc<RwLock<impl Fetcher + Send + Sync + 'static>>> {
-        providers.map(|providers| {
-            Arc::new(RwLock::new(SingleChainFetcher::new(
-                kv_store,
-                providers.l1_provider,
-                providers.blob_provider,
-                providers.l2_provider,
-                self.agreed_l2_head_hash,
-            )))
-        })
-    }
-
     fn create_key_value_store(&self) -> Result<Arc<RwLock<TracingKeyValueStore>>> {
         // Only memory store is traceable
         // Using disk causes insufficient blob preimages in ELC because the already stored data is not traceable
@@ -103,15 +62,27 @@ impl DerivationRequest {
         let hint = BidirectionalChannel::new()?;
         let preimage = BidirectionalChannel::new()?;
         let kv_store = self.create_key_value_store()?;
-        let providers = self.create_providers().await?;
-        let fetcher = self.create_fetcher(providers, kv_store.clone());
+        let cfg = SingleChainHost {
+            l1_node_address: Some(self.config.l1_node_address.clone()),
+            l2_node_address: Some(self.config.l2_node_address.clone()),
+            l1_beacon_address: Some(self.config.l1_beacon_address.clone()),
+            l1_head: self.l1_head_hash,
+            agreed_l2_output_root: self.agreed_l2_output_root,
+            agreed_l2_head_hash: self.agreed_l2_head_hash,
+            claimed_l2_output_root: self.l2_output_root,
+            claimed_l2_block_number: self.l2_block_number,
+            ..Default::default()
+        };
+        let providers = cfg.create_providers().await?;
+        let backend =
+            OnlineHostBackend::new(cfg, kv_store.clone(), providers, SingleChainHintHandler)
+                .with_proactive_hint(HintType::L2PayloadWitness);
 
         let server_task = task::spawn(
             PreimageServer::new(
                 OracleServer::new(preimage.host),
                 HintReader::new(hint.host),
-                kv_store.clone(),
-                fetcher,
+                Arc::new(backend),
             )
             .start(),
         );
@@ -140,10 +111,4 @@ impl DerivationRequest {
             Err(e) => Err(e),
         }
     }
-}
-
-fn http_provider(url: &str) -> ReqwestProvider {
-    let url = url.parse().unwrap();
-    let http = Http::<Client>::new(url);
-    ReqwestProvider::new(RpcClient::new(http, true))
 }
