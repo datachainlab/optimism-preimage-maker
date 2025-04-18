@@ -4,22 +4,14 @@ use crate::host::single::cli::SingleChainHostCli;
 use crate::host::single::local_kv::LocalKeyValueStore;
 use crate::host::single::trace::{encode_to_bytes, TracingKeyValueStore};
 use alloy_primitives::B256;
-use alloy_provider::ReqwestProvider;
-use alloy_rpc_client::RpcClient;
-use alloy_transport_http::Http;
 use anyhow::Result;
 use kona_genesis::RollupConfig;
 use kona_host::single::{SingleChainHintHandler, SingleChainHost};
-use kona_host::{
-    MemoryKeyValueStore, OnlineHostBackend, OnlineHostBackendCfg, PreimageServer,
-    SharedKeyValueStore, SplitKeyValueStore,
-};
+use kona_host::{MemoryKeyValueStore, OnlineHostBackend, PreimageServer, SplitKeyValueStore};
 use kona_preimage::{
     BidirectionalChannel, HintReader, HintWriter, NativeChannel, OracleReader, OracleServer,
 };
 use kona_proof::HintType;
-use kona_providers_alloy::{OnlineBeaconClient, OnlineBlobProvider};
-use reqwest::Client;
 use std::sync::Arc;
 use tokio::sync::RwLock;
 use tokio::task;
