@@ -2,7 +2,8 @@
 chain:
 	git clone --depth 1 -b v1.13.1 https://github.com/ethereum-optimism/optimism ./chain
 	sed 's/teku/lodestar/g' chain/kurtosis-devnet/simple.yaml > chain/kurtosis-devnet/simple.yaml.tmp
-	mv chain/kurtosis-devnet/simple.yaml.tmp chain/kurtosis-devnet/simple.yaml
+	sed 's/minimal/minimal\n    electra_fork_epoch: 0/g' chain/kurtosis-devnet/simple.yaml > chain/kurtosis-devnet/simple.yaml.tmp2
+	mv chain/kurtosis-devnet/simple.yaml.tmp2 chain/kurtosis-devnet/simple.yaml
 
 .PHONY: devnet-up
 devnet-up:
