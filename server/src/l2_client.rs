@@ -1,6 +1,6 @@
 use alloy_primitives::B256;
 use anyhow::Result;
-use maili_genesis::RollupConfig;
+use kona_genesis::RollupConfig;
 use reqwest::Response;
 use serde_json::Value;
 

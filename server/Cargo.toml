@@ -21,14 +21,12 @@ async-trait = "0.1"
 # Kona
 kona-mpt = { workspace = true }
 kona-client = { workspace = true }
-kona-host = { workspace = true }
+kona-host = { workspace = true, features=["single"] }
 kona-proof = { workspace = true, features = ["std"] }
 kona-preimage = { workspace = true, features = ["std"] }
 kona-providers-alloy= { workspace = true }
-
-# Maili
-maili-protocol = { workspace = true, features = ["std", "serde"] }
-maili-genesis = { workspace = true, features = ["std", "serde"] }
+kona-protocol = { workspace = true, features = ["std", "serde"] }
+kona-genesis = { workspace = true, features = ["std", "serde"] }
 
 # Alloy
 alloy-rlp = { workspace = true }

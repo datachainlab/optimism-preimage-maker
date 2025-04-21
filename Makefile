@@ -1,8 +1,9 @@
 .PHONY: chain
 chain:
-	git clone --depth 1 -b v1.11.2 https://github.com/ethereum-optimism/optimism ./chain
+	git clone --depth 1 -b v1.13.1 https://github.com/ethereum-optimism/optimism ./chain
 	sed 's/teku/lodestar/g' chain/kurtosis-devnet/simple.yaml > chain/kurtosis-devnet/simple.yaml.tmp
-	mv chain/kurtosis-devnet/simple.yaml.tmp chain/kurtosis-devnet/simple.yaml
+	sed 's/minimal/minimal\n    electra_fork_epoch: 0/g' chain/kurtosis-devnet/simple.yaml > chain/kurtosis-devnet/simple.yaml.tmp2
+	mv chain/kurtosis-devnet/simple.yaml.tmp2 chain/kurtosis-devnet/simple.yaml
 
 .PHONY: devnet-up
 devnet-up:
@@ -15,7 +16,7 @@ set-port:
 .PHONY: status
 status:
 	@PORT=$$(jq -r '.l2RollupPort' hostPort.json);\
-	curl -X POST localhost:$$PORT -d '{"method":"optimism_syncStatus", "jsonrpc": "2.0", "id":1, "params":[]}' -H "Content-Type: application/json" | jq .result.finalized_l2
+	curl -X POST localhost:$$PORT -d '{"method":"optimism_syncStatus", "jsonrpc": "2.0", "id":1, "params":[]}' -H "Content-Type: application/json" | jq .result
 
 .PHONY: server-up
 server-up:
