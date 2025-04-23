@@ -1,7 +1,7 @@
 #![feature(const_trait_impl)]
 extern crate core;
 
-use crate::host::single::cli::SingleChainHostCli;
+use crate::host::single::config::Config;
 use crate::server::{start_http_server_task, DerivationState};
 use clap::Parser;
 use l2_client::L2Client;
@@ -16,7 +16,7 @@ mod server;
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
-    let config = SingleChainHostCli::parse();
+    let config = Config::parse();
 
     // start tracing
     let filter = filter::EnvFilter::from_default_env()

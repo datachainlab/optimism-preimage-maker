@@ -5,7 +5,7 @@ use serde::Serialize;
 
 /// The host binary CLI application arguments.
 #[derive(Default, Parser, Serialize, Clone, Debug)]
-pub struct SingleChainHostCli {
+pub struct Config {
     /// Address of L2 JSON-RPC endpoint to use (eth and debug namespace required).
     #[clap(long, visible_alias = "l2", default_value = "http://localhost:52470")]
     pub l2_node_address: String,

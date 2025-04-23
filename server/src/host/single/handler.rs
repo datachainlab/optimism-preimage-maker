@@ -1,6 +1,6 @@
 //! [SingleChainHostCli]'s [HostOrchestrator] + [DetachedHostOrchestrator] implementations.
 
-use crate::host::single::cli::SingleChainHostCli;
+use crate::host::single::config::Config;
 use crate::host::single::local_kv::LocalKeyValueStore;
 use crate::host::single::trace::{encode_to_bytes, TracingKeyValueStore};
 use alloy_primitives::B256;
@@ -18,7 +18,7 @@ use tokio::task;
 
 #[derive(Debug, Clone)]
 pub struct DerivationRequest {
-    pub config: SingleChainHostCli,
+    pub config: Config,
     pub rollup_config: RollupConfig,
     pub l2_chain_id: u64,
     /// for L2 derivation

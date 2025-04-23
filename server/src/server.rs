@@ -1,5 +1,5 @@
-use crate::host::single::cli::SingleChainHostCli;
-use crate::host::single::orchestrator::DerivationRequest;
+use crate::host::single::config::Config;
+use crate::host::single::handler::DerivationRequest;
 use alloy_primitives::B256;
 use anyhow::{Context, Result};
 use axum::extract::State;
@@ -16,7 +16,7 @@ use tokio::task::JoinHandle;
 
 pub struct DerivationState {
     pub rollup_config: RollupConfig,
-    pub config: SingleChainHostCli,
+    pub config: Config,
     pub l2_chain_id: u64,
 }
 
