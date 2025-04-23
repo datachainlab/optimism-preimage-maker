@@ -18,6 +18,10 @@ status:
 	@PORT=$$(jq -r '.l2RollupPort' hostPort.json);\
 	curl -X POST localhost:$$PORT -d '{"method":"optimism_syncStatus", "jsonrpc": "2.0", "id":1, "params":[]}' -H "Content-Type: application/json" | jq .result
 
+.PHONY: wait
+wait:
+	./scripts/wait.sh
+
 .PHONY: server-up
 server-up:
 	@L2_ROLLUP_PORT=$$(jq -r '.l2RollupPort' hostPort.json);\

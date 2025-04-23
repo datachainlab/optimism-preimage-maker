@@ -7,7 +7,7 @@ use axum::http::StatusCode;
 use axum::routing::post;
 use axum::Json;
 use kona_genesis::RollupConfig;
-use log::info;
+use log::{error, info};
 use serde::{Deserialize, Serialize};
 use std::fmt::Debug;
 use std::sync::Arc;
@@ -53,9 +53,30 @@ pub struct Request {
 
 async fn derivation(
     State(state): State<Arc<DerivationState>>,
-    Json(payload): Json<crate::server::Request>,
+    Json(payload): Json<Request>,
 ) -> (StatusCode, Vec<u8>) {
     info!("derivation request: {:?}", payload);
+    if payload.agreed_l2_output_root == payload.l2_output_root {
+        error!("agreed_l2_output_root and l2_output_root are same value");
+        return (StatusCode::BAD_REQUEST, vec![]);
+    }
+    if payload.agreed_l2_output_root.is_empty() || payload.agreed_l2_output_root.is_zero() {
+        error!("invalid agreed_l2_output_root",);
+        return (StatusCode::BAD_REQUEST, vec![]);
+    }
+    if payload.l2_output_root.is_empty() || payload.l2_output_root.is_zero() {
+        error!("invalid l2_output_root",);
+        return (StatusCode::BAD_REQUEST, vec![]);
+    }
+    if payload.l1_head_hash.is_empty() || payload.l1_head_hash.is_zero() {
+        error!("invalid l1_head_hash",);
+        return (StatusCode::BAD_REQUEST, vec![]);
+    }
+    if payload.l2_block_number == 0 {
+        error!("invalid l2_block_number",);
+        return (StatusCode::BAD_REQUEST, vec![]);
+    }
+
     let derivation = DerivationRequest {
         config: state.config.clone(),
         rollup_config: state.rollup_config.clone(),
@@ -66,6 +87,7 @@ async fn derivation(
         l2_output_root: payload.l2_output_root,
         l2_block_number: payload.l2_block_number,
     };
+
     match derivation.start().await {
         Ok(preimage) => {
             info!("derivation success");

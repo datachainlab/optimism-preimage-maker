@@ -1,6 +1,5 @@
 #!/bin/bash
 
-
 function hostPort() {
   prefix=$1
   port=$2
