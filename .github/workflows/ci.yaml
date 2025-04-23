@@ -71,4 +71,5 @@ jobs:
           make chain
           make devnet-up
           make set-port
-          make status
+          make wait
+          make test

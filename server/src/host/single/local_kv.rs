@@ -11,9 +11,6 @@ use kona_proof::boot::{
     L2_ROLLUP_CONFIG_KEY,
 };
 
-/// The default chain ID to use if none is provided.
-const DEFAULT_CHAIN_ID: u64 = 0xbeefbabe;
-
 /// A simple, synchronous key-value store that returns data from a [SingleChainHostCli] config.
 #[derive(Debug)]
 pub struct LocalKeyValueStore {
