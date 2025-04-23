@@ -12,10 +12,10 @@ Preimage maker for optimism
 make chain
 make devnet-up
 make set-port
-make status
+make wait
 ```
 
-Wait until the sufficient(several hundred blocks) finalized l2 is found. 
+Wait until the finalized l2 is found. 
 
 ### E2E test
 
