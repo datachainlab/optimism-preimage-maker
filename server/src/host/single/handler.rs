@@ -13,6 +13,7 @@ use kona_preimage::{
 };
 use kona_proof::HintType;
 use std::sync::Arc;
+use kona_client::fpvm_evm::FpvmOpEvmFactory;
 use tokio::sync::RwLock;
 use tokio::task;
 
@@ -44,8 +45,9 @@ impl DerivationRequest {
     async fn run_client_native(
         hint_reader: HintWriter<NativeChannel>,
         oracle_reader: OracleReader<NativeChannel>,
+        evm_factory: FpvmOpEvmFactory<NativeChannel>,
     ) -> Result<()> {
-        kona_client::single::run(oracle_reader, hint_reader, None)
+        kona_client::single::run(oracle_reader, hint_reader, evm_factory)
             .await
             .map_err(Into::into)
     }
@@ -79,8 +81,9 @@ impl DerivationRequest {
             .start(),
         );
         let client_task = task::spawn(Self::run_client_native(
-            HintWriter::new(hint.client),
-            OracleReader::new(preimage.client),
+            HintWriter::new(hint.client.clone()),
+            OracleReader::new(preimage.client.clone()),
+            FpvmOpEvmFactory::new(HintWriter::new(hint.client), OracleReader::new(preimage.client)),
         ));
 
         let (_, client_result) = tokio::try_join!(server_task, client_task)?;
