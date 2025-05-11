@@ -7,23 +7,23 @@ use serde::Serialize;
 #[derive(Default, Parser, Serialize, Clone, Debug)]
 pub struct Config {
     /// Address of L2 JSON-RPC endpoint to use (eth and debug namespace required).
-    #[clap(long, visible_alias = "l2", default_value = "http://localhost:52470")]
+    #[clap(long, visible_alias = "l2", default_value = "http://localhost:61916")]
     pub l2_node_address: String,
     /// Address of L1 JSON-RPC endpoint to use (eth and debug namespace required)
-    #[clap(long, visible_alias = "l1", default_value = "http://localhost:52145")]
+    #[clap(long, visible_alias = "l1", default_value = "http://localhost:61048")]
     pub l1_node_address: String,
     /// Address of the L1 Beacon API endpoint to use.
     #[clap(
         long,
         visible_alias = "beacon",
-        default_value = "http://localhost:52149"
+        default_value = "http://localhost:61058"
     )]
     pub l1_beacon_address: String,
     /// Address of L2 JSON-RPC endpoint to use (eth and debug namespace required).
     #[clap(
         long,
         visible_alias = "rollup",
-        default_value = "http://localhost:52492"
+        default_value = "http://localhost:61923"
     )]
     pub l2_rollup_address: String,
     /// Path to rollup config. If provided, the host will use this config instead of attempting to
