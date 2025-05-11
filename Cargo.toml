@@ -11,14 +11,14 @@ serde = { version = "1.0.210", default-features = false, features = ["derive"] }
 serde_json = { version = "1.0.128", default-features = false }
 
 # Kona
-kona-mpt = { git="https://github.com/anton-rs/kona", rev= "kona-client/v0.1.0-beta.18", default-features = false }
-kona-client = { git="https://github.com/anton-rs/kona", rev= "kona-client/v0.1.0-beta.18", default-features = false }
-kona-host = { git="https://github.com/anton-rs/kona", rev= "kona-client/v0.1.0-beta.18", default-features = false }
-kona-proof = { git="https://github.com/anton-rs/kona", rev= "kona-client/v0.1.0-beta.18", default-features = false }
-kona-preimage = {git="https://github.com/anton-rs/kona", rev= "kona-client/v0.1.0-beta.18", default-features = false }
-kona-providers-alloy= { git="https://github.com/anton-rs/kona", rev= "kona-client/v0.1.0-beta.18", default-features = false }
-kona-genesis = { git="https://github.com/anton-rs/kona", rev= "kona-client/v0.1.0-beta.18", default-features = false }
-kona-protocol = { git="https://github.com/anton-rs/kona", rev= "kona-client/v0.1.0-beta.18", default-features = false }
+kona-mpt = { git="https://github.com/anton-rs/kona", rev= "kona-client/v1.0.0", default-features = false }
+kona-client = { git="https://github.com/anton-rs/kona", rev= "kona-client/v1.0.0", default-features = false }
+kona-host = { git="https://github.com/anton-rs/kona", rev= "kona-client/v1.0.0", default-features = false }
+kona-proof = { git="https://github.com/anton-rs/kona", rev= "kona-client/v1.0.0", default-features = false }
+kona-preimage = {git="https://github.com/anton-rs/kona", rev= "kona-client/v1.0.0", default-features = false }
+kona-providers-alloy= { git="https://github.com/anton-rs/kona", rev= "kona-client/v1.0.0", default-features = false }
+kona-genesis = { git="https://github.com/anton-rs/kona", rev= "kona-client/v1.0.0", default-features = false }
+kona-protocol = { git="https://github.com/anton-rs/kona", rev= "kona-client/v1.0.0", default-features = false }
 
 # Alloy
 alloy-rlp = { version = "0.3.11", default-features = false }
