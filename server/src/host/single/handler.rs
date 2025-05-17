@@ -5,6 +5,7 @@ use crate::host::single::local_kv::LocalKeyValueStore;
 use crate::host::single::trace::{encode_to_bytes, TracingKeyValueStore};
 use alloy_primitives::B256;
 use anyhow::Result;
+use kona_client::fpvm_evm::FpvmOpEvmFactory;
 use kona_genesis::RollupConfig;
 use kona_host::single::{SingleChainHintHandler, SingleChainHost};
 use kona_host::{MemoryKeyValueStore, OnlineHostBackend, PreimageServer, SplitKeyValueStore};
@@ -13,7 +14,6 @@ use kona_preimage::{
 };
 use kona_proof::HintType;
 use std::sync::Arc;
-use kona_client::fpvm_evm::FpvmOpEvmFactory;
 use tokio::sync::RwLock;
 use tokio::task;
 
@@ -83,7 +83,10 @@ impl DerivationRequest {
         let client_task = task::spawn(Self::run_client_native(
             HintWriter::new(hint.client.clone()),
             OracleReader::new(preimage.client.clone()),
-            FpvmOpEvmFactory::new(HintWriter::new(hint.client), OracleReader::new(preimage.client)),
+            FpvmOpEvmFactory::new(
+                HintWriter::new(hint.client),
+                OracleReader::new(preimage.client),
+            ),
         ));
 
         let (_, client_result) = tokio::try_join!(server_task, client_task)?;
