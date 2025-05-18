@@ -10,6 +10,7 @@ on:
 jobs:
   lint:
     name: lint
+    timeout-minutes: 20
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -27,6 +28,7 @@ jobs:
         run: cargo machete
   test:
     name: test
+    timeout-minutes: 120
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -47,10 +49,15 @@ jobs:
           sudo apt update
           sudo apt remove kurtosis-cli
           sudo apt install kurtosis-cli=1.6.0 -V
+      - name: Prepare optimism
+        run: make chain
       - name: Start optimism
         run: |
-          make chain
           make devnet-up
           make set-port
-          make wait
-          make test
+      - name: Start preimage server
+        run: make server-up &
+      - name: Wait for chain to get ready
+        run: make wait
+      - name: Test
+        run: make test

@@ -9,7 +9,7 @@ do
   if [ $L2_NUMBER -gt 200 ]; then
     exit 0
   fi
-  echo "waiting for L2 number to be greater than 100"
+  echo "waiting for L2 number to be greater than 200"
   sleep 10
 done
 exit 1

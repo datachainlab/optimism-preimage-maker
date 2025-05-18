@@ -1,7 +1,7 @@
 .PHONY: chain
 chain:
 	git clone --depth 1 -b v1.13.1 https://github.com/ethereum-optimism/optimism ./chain
-	sed 's/teku/lodestar/g' chain/kurtosis-devnet/simple.yaml > chain/kurtosis-devnet/simple.yaml.tmp
+	sed 's/teku/lodestar\n      cl_image: chainsafe\/lodestar:v1.29.0\n      vc_image: chainsafe\/lodestar:v1.29.0/g' chain/kurtosis-devnet/simple.yaml > chain/kurtosis-devnet/simple.yaml.tmp
 	sed 's/minimal/minimal\n    electra_fork_epoch: 0/g' chain/kurtosis-devnet/simple.yaml.tmp > chain/kurtosis-devnet/simple.yaml.tmp2
 	mv chain/kurtosis-devnet/simple.yaml.tmp2 chain/kurtosis-devnet/simple.yaml
 
@@ -42,8 +42,6 @@ test:
 
 .PHONY: devnet-down
 devnet-down:
-	kurtosis engine restart
-	@ENCLAVE=$$(kurtosis enclave ls | awk 'NR==2 {print $$1}'); kurtosis enclave stop $$ENCLAVE
+	@ENCLAVE=$$(kurtosis enclave ls | awk 'NR==2 {print $$1}'); kurtosis enclave rm -f $$ENCLAVE
 	kurtosis engine stop
-	docker network rm kt-simple-devnet
 
