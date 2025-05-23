@@ -1,6 +1,3 @@
-#![feature(const_trait_impl)]
-extern crate core;
-
 use crate::host::single::config::Config;
 use crate::server::{start_http_server_task, DerivationState};
 use clap::Parser;

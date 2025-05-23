@@ -7,12 +7,12 @@ use axum::http::StatusCode;
 use axum::routing::post;
 use axum::Json;
 use kona_genesis::RollupConfig;
-use log::{error, info};
 use serde::{Deserialize, Serialize};
 use std::fmt::Debug;
 use std::sync::Arc;
 use tokio::net::TcpListener;
 use tokio::task::JoinHandle;
+use tracing::{error, info};
 
 pub struct DerivationState {
     pub rollup_config: RollupConfig,
@@ -56,25 +56,8 @@ async fn derivation(
     Json(payload): Json<Request>,
 ) -> (StatusCode, Vec<u8>) {
     info!("derivation request: {:?}", payload);
-    if payload.agreed_l2_output_root == payload.l2_output_root {
-        error!("agreed_l2_output_root and l2_output_root are same value");
-        return (StatusCode::BAD_REQUEST, vec![]);
-    }
-    if payload.agreed_l2_output_root.is_empty() || payload.agreed_l2_output_root.is_zero() {
-        error!("invalid agreed_l2_output_root",);
-        return (StatusCode::BAD_REQUEST, vec![]);
-    }
-    if payload.l2_output_root.is_empty() || payload.l2_output_root.is_zero() {
-        error!("invalid l2_output_root",);
-        return (StatusCode::BAD_REQUEST, vec![]);
-    }
-    if payload.l1_head_hash.is_empty() || payload.l1_head_hash.is_zero() {
-        error!("invalid l1_head_hash",);
-        return (StatusCode::BAD_REQUEST, vec![]);
-    }
-    if payload.l2_block_number == 0 {
-        error!("invalid l2_block_number",);
-        return (StatusCode::BAD_REQUEST, vec![]);
+    if let Err(v) = validate_request(&payload) {
+        return (StatusCode::BAD_REQUEST, v.as_bytes().to_vec());
     }
 
     let derivation = DerivationRequest {
@@ -98,4 +81,28 @@ async fn derivation(
             (StatusCode::INTERNAL_SERVER_ERROR, vec![])
         }
     }
+}
+
+fn validate_request(payload: &Request) -> Result<(), &'static str> {
+    if payload.agreed_l2_output_root == payload.l2_output_root {
+        error!("agreed_l2_output_root and l2_output_root are same value");
+        return Err("agreed_l2_output_root and l2_output_root are the same value");
+    }
+    if payload.agreed_l2_output_root.is_empty() || payload.agreed_l2_output_root.is_zero() {
+        error!("invalid agreed_l2_output_root",);
+        return Err("invalid agreed_l2_output_root");
+    }
+    if payload.l2_output_root.is_empty() || payload.l2_output_root.is_zero() {
+        error!("invalid l2_output_root",);
+        return Err("invalid l2_output_root");
+    }
+    if payload.l1_head_hash.is_empty() || payload.l1_head_hash.is_zero() {
+        error!("invalid l1_head_hash",);
+        return Err("invalid l1_head_hash");
+    }
+    if payload.l2_block_number == 0 {
+        error!("invalid l2_block_number",);
+        return Err("invalid l2_block_number");
+    }
+    Ok(())
 }

@@ -43,11 +43,11 @@ impl DerivationRequest {
     }
 
     async fn run_client_native(
-        hint_reader: HintWriter<NativeChannel>,
+        hint_writer: HintWriter<NativeChannel>,
         oracle_reader: OracleReader<NativeChannel>,
         evm_factory: FpvmOpEvmFactory<NativeChannel>,
     ) -> Result<()> {
-        kona_client::single::run(oracle_reader, hint_reader, evm_factory)
+        kona_client::single::run(oracle_reader, hint_writer, evm_factory)
             .await
             .map_err(Into::into)
     }
