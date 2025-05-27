@@ -3891,7 +3891,6 @@ dependencies = [
  "kona-host",
  "kona-preimage",
  "kona-proof",
- "log",
  "optimism-derivation",
  "prost",
  "reqwest",
