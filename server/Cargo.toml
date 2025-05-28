@@ -1,6 +1,6 @@
 [package]
 name = "optimism-preimage-maker"
-version = "0.1.0"
+version = "0.1.1"
 edition = "2021"
 
 [dependencies]
@@ -27,7 +27,7 @@ kona-genesis = { workspace = true, features = ["std", "serde"] }
 alloy-primitives = { workspace = true, features = ["map", "serde"] }
 
 # optimism derivation
-optimism-derivation = { git = "https://github.com/datachainlab/optimism-elc", branch = "feature/v0.1.0", default-features = false }
+optimism-derivation = { git = "https://github.com/datachainlab/optimism-elc", rev = "cf561cbbf9a18158c28de2c7b3baae489eaabf86", default-features = false }
 
 [dev-dependencies]
 prost = "0.11.9"
