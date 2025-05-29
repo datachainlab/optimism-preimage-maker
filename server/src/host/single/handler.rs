@@ -5,13 +5,10 @@ use crate::host::single::local_kv::LocalKeyValueStore;
 use crate::host::single::trace::{encode_to_bytes, TracingKeyValueStore};
 use alloy_primitives::B256;
 use anyhow::Result;
-use kona_client::fpvm_evm::FpvmOpEvmFactory;
 use kona_genesis::RollupConfig;
 use kona_host::single::{SingleChainHintHandler, SingleChainHost};
 use kona_host::{MemoryKeyValueStore, OnlineHostBackend, PreimageServer, SplitKeyValueStore};
-use kona_preimage::{
-    BidirectionalChannel, HintReader, HintWriter, NativeChannel, OracleReader, OracleServer,
-};
+use kona_preimage::{BidirectionalChannel, HintReader, HintWriter, OracleReader, OracleServer};
 use kona_proof::HintType;
 use std::sync::Arc;
 use tokio::sync::RwLock;
@@ -42,16 +39,6 @@ impl DerivationRequest {
         )))))
     }
 
-    async fn run_client_native(
-        hint_writer: HintWriter<NativeChannel>,
-        oracle_reader: OracleReader<NativeChannel>,
-        evm_factory: FpvmOpEvmFactory<NativeChannel>,
-    ) -> Result<()> {
-        kona_client::single::run(oracle_reader, hint_writer, evm_factory)
-            .await
-            .map_err(Into::into)
-    }
-
     pub async fn start(&self) -> Result<Vec<u8>> {
         let hint = BidirectionalChannel::new()?;
         let preimage = BidirectionalChannel::new()?;
@@ -80,13 +67,9 @@ impl DerivationRequest {
             )
             .start(),
         );
-        let client_task = task::spawn(Self::run_client_native(
-            HintWriter::new(hint.client.clone()),
-            OracleReader::new(preimage.client.clone()),
-            FpvmOpEvmFactory::new(
-                HintWriter::new(hint.client),
-                OracleReader::new(preimage.client),
-            ),
+        let client_task = task::spawn(kona_client::single::run(
+            OracleReader::new(preimage.client),
+            HintWriter::new(hint.client),
         ));
 
         let (_, client_result) = tokio::try_join!(server_task, client_task)?;
@@ -106,7 +89,7 @@ impl DerivationRequest {
                 );
                 Ok(preimage_bytes)
             }
-            Err(e) => Err(e),
+            Err(e) => Err(e.into()),
         }
     }
 }
