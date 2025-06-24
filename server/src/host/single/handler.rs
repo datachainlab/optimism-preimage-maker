@@ -8,7 +8,10 @@ use anyhow::Result;
 use kona_genesis::RollupConfig;
 use kona_host::single::{SingleChainHintHandler, SingleChainHost};
 use kona_host::{MemoryKeyValueStore, OnlineHostBackend, PreimageServer, SplitKeyValueStore};
-use kona_preimage::{BidirectionalChannel, HintReader, HintWriter, OracleReader, OracleServer};
+use kona_preimage::{
+    BidirectionalChannel, HintReader, HintWriter, OracleReader, OracleServer, PreimageKey,
+};
+use kona_proof::boot::L2_ROLLUP_CONFIG_KEY;
 use kona_proof::HintType;
 use std::sync::Arc;
 use tokio::sync::RwLock;
@@ -75,10 +78,14 @@ impl DerivationRequest {
         let (_, client_result) = tokio::try_join!(server_task, client_task)?;
         match client_result {
             Ok(_) => {
-                let used = {
+                let mut used = {
                     let mut lock = kv_store.write().await;
                     std::mem::take(&mut lock.used)
                 };
+                let local_key = PreimageKey::new_local(L2_ROLLUP_CONFIG_KEY.to());
+                let roll_up_config_json = serde_json::to_vec(&self.rollup_config)?;
+                used.insert(local_key, roll_up_config_json);
+
                 let entry_size = used.len();
                 let preimage = encode_to_bytes(used);
                 let preimage_bytes: Vec<u8> = preimage.into_vec().unwrap();
