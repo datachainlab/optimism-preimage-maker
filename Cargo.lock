@@ -3853,7 +3853,7 @@ dependencies = [
 [[package]]
 name = "optimism-derivation"
 version = "0.1.1"
-source = "git+https://github.com/datachainlab/optimism-elc?rev=10b017de6451befb563f17cde3d53894dffafe92#10b017de6451befb563f17cde3d53894dffafe92"
+source = "git+https://github.com/datachainlab/optimism-elc?rev=5cc3da4c75a8a81ad814e7e9493d5ccf2174c039#5cc3da4c75a8a81ad814e7e9493d5ccf2174c039"
 dependencies = [
  "alloy-consensus",
  "alloy-eips",
@@ -3872,6 +3872,7 @@ dependencies = [
  "prost",
  "prost-derive",
  "serde",
+ "serde_json",
  "sha2 0.10.9",
  "thiserror",
 ]
