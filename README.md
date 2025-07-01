@@ -2,7 +2,7 @@
 Preimage maker for optimism
 
 ## Prerequisites
-* [kurtosis-cli v1.6.0](https://docs.kurtosis.com/install/)
+* [kurtosis-cli v1.8.1](https://docs.kurtosis.com/install-historical/)
 * [just](https://github.com/casey/just)
 
 ## Quickstart
