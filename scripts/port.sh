@@ -10,8 +10,8 @@ function hostPort() {
 
 hostPort "cl-1-lodestar-geth" 4000 l1BeaconPort
 hostPort "el-1-geth-lodestar" 8545 l1GethPort
-hostPort "op-cl-1-op-node" 8547 l2RollupPort
-hostPort "op-el-1-op-geth" 8545 l2GethPort
+hostPort "op-cl-" 8547 l2RollupPort
+hostPort "op-el-" 8545 l2GethPort
 
 echo "{\"l1BeaconPort\": ${l1BeaconPort}, \"l1GethPort\": ${l1GethPort}, \"l2RollupPort\": ${l2RollupPort}, \"l2GethPort\": ${l2GethPort}}" | jq > hostPort.json
 cat hostPort.json
