@@ -58,7 +58,7 @@ async fn get_latest_derivation(l2_client: &L2Client) -> (Request, u64) {
 async fn run_performance() {
     init();
     let l2_client = get_l2_client();
-    let last: Option<u64> = None;
+    let mut last: Option<u64> = None;
     loop {
         time::sleep(time::Duration::from_secs(3)).await;
         let (request , agreed) = get_latest_derivation(&l2_client).await;
@@ -67,6 +67,7 @@ async fn run_performance() {
                 continue;
             }
         }
+        last = Some(request.l2_block_number);
         let client = reqwest::Client::new();
         let builder = client.post("http://localhost:10080/derivation");
         let start = Instant::now();
