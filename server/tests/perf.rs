@@ -74,7 +74,7 @@ async fn run_performance() {
         let preimage_bytes = builder.json(&request).send().await.unwrap();
         let elapsed = start.elapsed();
         let preimage_bytes = preimage_bytes.bytes().await.unwrap();
-        let preimages = Preimages::decode(preimage_bytes).unwrap();
+        let preimages = Preimages::decode(preimage_bytes.clone()).unwrap();
         tracing::info!("{}-{},{},{},{}", request.l2_block_number, agreed, elapsed.as_secs(), preimages.preimages.len(), preimage_bytes.len());
     }
 }
