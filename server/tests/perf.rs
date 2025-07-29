@@ -20,7 +20,7 @@ fn init() {
         .try_init();
 }
 fn get_l2_client() -> L2Client {
-    let op_node_addr = format!("{}", env::var("L2_ROLLUP_").unwrap());
+    let op_node_addr = format!("{}", env::var("L2_ROLLUP").unwrap());
     let op_geth_addr = format!("{}", env::var("L2_GETH").unwrap());
     tracing::info!(
         "Starting with op_node_addr: {} op_geth_addr: {}",
@@ -58,7 +58,7 @@ async fn get_latest_derivation(l2_client: &L2Client) -> (Request, u64) {
 async fn run_performance() {
     init();
     let l2_client = get_l2_client();
-    let mut last: Option<u64> = None;
+    let last: Option<u64> = None;
     loop {
         time::sleep(time::Duration::from_secs(3)).await;
         let (request , agreed) = get_latest_derivation(&l2_client).await;
@@ -67,14 +67,12 @@ async fn run_performance() {
                 continue;
             }
         }
-        last = Some(request.l2_block_number);
         let client = reqwest::Client::new();
         let builder = client.post("http://localhost:10080/derivation");
         let start = Instant::now();
         let preimage_bytes = builder.json(&request).send().await.unwrap();
         let elapsed = start.elapsed();
         let preimage_bytes = preimage_bytes.bytes().await.unwrap();
-        let preimages = Preimages::decode(preimage_bytes.clone()).unwrap();
-        tracing::info!("{}-{},{},{},{}", request.l2_block_number, agreed, elapsed.as_secs(), preimages.preimages.len(), preimage_bytes.len());
+        tracing::info!("{}-{},{},{}", request.l2_block_number, agreed, elapsed.as_secs(), preimage_bytes.len());
     }
 }
