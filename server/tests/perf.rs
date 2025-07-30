@@ -76,3 +76,41 @@ async fn run_performance() {
         tracing::info!("{}-{},{},{}", request.l2_block_number, agreed, elapsed.as_secs(), preimage_bytes.len());
     }
 }
+
+#[serial]
+#[tokio::test(flavor = "multi_thread")]
+async fn run_parallel() {
+    const TASKS: usize = 20;
+    init();
+    let l2_client = get_l2_client();
+    let last: Option<u64> = None;
+    loop {
+        time::sleep(time::Duration::from_secs(3)).await;
+        let (request , agreed) = get_latest_derivation(&l2_client).await;
+        if let Some(last_block) = last {
+            if request.l2_block_number == last_block {
+                continue;
+            }
+        }
+        let mut tasks = vec![];
+        for _ in 0..TASKS {
+            let request = request.clone();
+            let task = tokio::spawn(async move {
+                let request = request.clone();
+                let client = reqwest::Client::new();
+                let builder = client.post("http://localhost:10080/derivation");
+                let start = Instant::now();
+                let preimage_bytes = builder.json(&request).send().await.unwrap();
+                let elapsed = start.elapsed();
+                let preimage_bytes = preimage_bytes.bytes().await.unwrap();
+                tracing::info!("{}-{},{},{}", request.l2_block_number, agreed, elapsed.as_secs(), preimage_bytes.len());
+            });
+            tasks.push(task);
+        }
+        for task in tasks {
+            if let Err(e) = task.await {
+                tracing::error!("Task failed: {:?}", e);
+            }
+        }
+    }
+}
