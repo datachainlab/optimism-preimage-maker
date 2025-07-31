@@ -81,10 +81,11 @@ async fn run_performance() {
 #[tokio::test(flavor = "multi_thread")]
 async fn run_parallel() {
     const TASKS: usize = 20;
+    const EXECUTION_COUNT: usize = 10;
     init();
     let l2_client = get_l2_client();
     let last: Option<u64> = None;
-    loop {
+    for _ in 0..EXECUTION_COUNT {
         time::sleep(time::Duration::from_secs(3)).await;
         let (request , agreed) = get_latest_derivation(&l2_client).await;
         if let Some(last_block) = last {
