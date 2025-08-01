@@ -78,6 +78,7 @@ impl DerivationRequest {
         let (_, client_result) = tokio::try_join!(server_task, client_task)?;
         match client_result {
             Ok(_) => {
+                /*
                 let mut used = {
                     let mut lock = kv_store.write().await;
                     std::mem::take(&mut lock.used)
@@ -95,6 +96,8 @@ impl DerivationRequest {
                     preimage_bytes.len()
                 );
                 Ok(preimage_bytes)
+                 */
+                Ok(vec![])
             }
             Err(e) => Err(e.into()),
         }
