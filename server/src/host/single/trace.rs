@@ -5,8 +5,9 @@ use anyhow::Result;
 use kona_host::KeyValueStore;
 use kona_preimage::PreimageKey;
 use optimism_derivation::types::{Preimage, Preimages};
+use crate::host::single::store::Clearable;
 
-type Inner = Box<dyn KeyValueStore + Send + Sync>;
+type Inner = Box<dyn Clearable + Send + Sync>;
 
 pub struct TracingKeyValueStore {
     pub inner: Inner,
@@ -19,6 +20,11 @@ impl TracingKeyValueStore {
             inner,
             used: Default::default(),
         }
+    }
+
+    pub fn clear(&mut self) -> hashbrown::HashMap<PreimageKey, Vec<u8>> {
+        self.inner.clear();
+        std::mem::take(&mut self.used)
     }
 }
 
