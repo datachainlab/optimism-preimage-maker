@@ -80,13 +80,12 @@ impl DerivationRequest {
             )
             .start(),
         );
-        let result = task::spawn(run(
+        let result = run(
             OracleReader::new(preimage.client),
             HintWriter::new(hint.client),
-        ))
-        .await;
+        ).await;
         //let client_result = client_task.await;
-        println!("server result: {:?}", result);
+        println!("result: {:?}", result);
         drop(server_task);
         //println!("client result: {:?}", client_result);
         Ok(vec![])

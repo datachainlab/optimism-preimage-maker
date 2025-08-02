@@ -11,7 +11,7 @@ mod host;
 pub mod l2_client;
 mod server;
 
-#[tokio::main(flavor = "multi_thread")]
+#[tokio::main]
 async fn main() -> anyhow::Result<()> {
     console_subscriber::init();
     let config = Config::parse();
