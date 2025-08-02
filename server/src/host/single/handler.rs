@@ -1,8 +1,8 @@
 //! [SingleChainHostCli]'s [HostOrchestrator] + [DetachedHostOrchestrator] implementations.
 
 use crate::host::single::config::Config;
-use crate::host::single::kona_client_copy::run;
 use crate::host::single::local_kv::LocalKeyValueStore;
+use crate::host::single::kona_client_copy::run;
 use crate::host::single::trace::{encode_to_bytes, TracingKeyValueStore};
 use alloy_primitives::B256;
 use anyhow::Result;
@@ -80,16 +80,12 @@ impl DerivationRequest {
             )
             .start(),
         );
-        let result = run(
+        let client_task = task::spawn(run(
             OracleReader::new(preimage.client),
             HintWriter::new(hint.client),
-        ).await;
-        //let client_result = client_task.await;
-        println!("result: {:?}", result);
-        drop(server_task);
-        //println!("client result: {:?}", client_result);
-        Ok(vec![])
-        /*
+        ));
+
+        let (_, client_result) = tokio::try_join!(server_task, client_task)?;
         match client_result {
             Ok(_) => {
                 let mut used = {
@@ -109,10 +105,8 @@ impl DerivationRequest {
                     preimage_bytes.len()
                 );
                 Ok(preimage_bytes)
-                        Ok(vec![])
-                    }
-                    Err(e) => Err(e.into()),
-                }
-                 */
+            }
+            Err(e) => Err(e.into()),
+        }
     }
 }
