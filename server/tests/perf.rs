@@ -1,16 +1,16 @@
-use std::env;
 use optimism_derivation::derivation::Derivation;
 use optimism_derivation::oracle::MemoryOracleClient;
 use optimism_derivation::types::Preimages;
+use optimism_preimage_maker::l2_client::L2Client;
+use optimism_preimage_maker::Request;
 use prost::Message;
 use serial_test::serial;
+use std::env;
 use tokio::time;
 use tokio::time::Instant;
 use tracing_subscriber::filter;
 use tracing_subscriber::layer::SubscriberExt;
 use tracing_subscriber::util::SubscriberInitExt;
-use optimism_preimage_maker::l2_client::L2Client;
-use optimism_preimage_maker::Request;
 
 fn init() {
     let filter = filter::EnvFilter::from_default_env().add_directive("info".parse().unwrap());
@@ -44,13 +44,16 @@ async fn get_latest_derivation(l2_client: &L2Client) -> (Request, u64) {
         .unwrap()
         .hash;
     let agreed_output = l2_client.output_root_at(agreed_l2_number).await.unwrap();
-    (Request {
-        l1_head_hash: sync_status.finalized_l1.hash,
-        agreed_l2_head_hash: agreed_l2_hash,
-        agreed_l2_output_root: agreed_output.output_root,
-        l2_output_root: claiming_output.output_root,
-        l2_block_number: claiming_l2_number,
-    }, agreed_l2_number)
+    (
+        Request {
+            l1_head_hash: sync_status.finalized_l1.hash,
+            agreed_l2_head_hash: agreed_l2_hash,
+            agreed_l2_output_root: agreed_output.output_root,
+            l2_output_root: claiming_output.output_root,
+            l2_block_number: claiming_l2_number,
+        },
+        agreed_l2_number,
+    )
 }
 
 #[serial]
@@ -61,7 +64,7 @@ async fn run_performance() {
     let last: Option<u64> = None;
     loop {
         time::sleep(time::Duration::from_secs(3)).await;
-        let (request , agreed) = get_latest_derivation(&l2_client).await;
+        let (request, agreed) = get_latest_derivation(&l2_client).await;
         if let Some(last_block) = last {
             if request.l2_block_number == last_block {
                 continue;
@@ -73,7 +76,13 @@ async fn run_performance() {
         let preimage_bytes = builder.json(&request).send().await.unwrap();
         let elapsed = start.elapsed();
         let preimage_bytes = preimage_bytes.bytes().await.unwrap();
-        tracing::info!("{}-{},{},{}", request.l2_block_number, agreed, elapsed.as_secs(), preimage_bytes.len());
+        tracing::info!(
+            "{}-{},{},{}",
+            request.l2_block_number,
+            agreed,
+            elapsed.as_secs(),
+            preimage_bytes.len()
+        );
     }
 }
 
@@ -87,7 +96,7 @@ async fn run_parallel() {
     let last: Option<u64> = None;
     for _ in 0..EXECUTION_COUNT {
         time::sleep(time::Duration::from_secs(3)).await;
-        let (request , agreed) = get_latest_derivation(&l2_client).await;
+        let (request, agreed) = get_latest_derivation(&l2_client).await;
         if let Some(last_block) = last {
             if request.l2_block_number == last_block {
                 continue;
@@ -104,7 +113,13 @@ async fn run_parallel() {
                 let preimage_bytes = builder.json(&request).send().await.unwrap();
                 let elapsed = start.elapsed();
                 let preimage_bytes = preimage_bytes.bytes().await.unwrap();
-                tracing::info!("{}-{},{},{}", request.l2_block_number, agreed, elapsed.as_secs(), preimage_bytes.len());
+                tracing::info!(
+                    "{}-{},{},{}",
+                    request.l2_block_number,
+                    agreed,
+                    elapsed.as_secs(),
+                    preimage_bytes.len()
+                );
             });
             tasks.push(task);
         }

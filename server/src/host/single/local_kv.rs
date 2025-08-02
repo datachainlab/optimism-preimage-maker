@@ -1,6 +1,7 @@
 //! Contains a concrete implementation of the [KeyValueStore] trait that stores data on disk,
 //! using the [SingleChainHostCli] config.
 
+use crate::host::single::config::Config;
 use crate::host::single::handler::DerivationRequest;
 use alloy_primitives::B256;
 use anyhow::Result;
@@ -11,7 +12,6 @@ use kona_proof::boot::{
     L1_HEAD_KEY, L2_CHAIN_ID_KEY, L2_CLAIM_BLOCK_NUMBER_KEY, L2_CLAIM_KEY, L2_OUTPUT_ROOT_KEY,
     L2_ROLLUP_CONFIG_KEY,
 };
-use crate::host::single::config::Config;
 
 /// A simple, synchronous key-value store that returns data from a [SingleChainHostCli] config.
 #[derive(Debug)]

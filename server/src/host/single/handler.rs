@@ -1,6 +1,7 @@
 //! [SingleChainHostCli]'s [HostOrchestrator] + [DetachedHostOrchestrator] implementations.
 
 use crate::host::single::config::Config;
+use crate::host::single::kona_client_copy::run;
 use crate::host::single::local_kv::LocalKeyValueStore;
 use crate::host::single::trace::{encode_to_bytes, TracingKeyValueStore};
 use alloy_primitives::B256;
@@ -16,7 +17,6 @@ use kona_proof::HintType;
 use std::sync::Arc;
 use tokio::sync::RwLock;
 use tokio::task;
-use crate::host::single::runner::run;
 
 #[derive(Debug, Clone)]
 pub struct DerivationRequest {
@@ -83,36 +83,37 @@ impl DerivationRequest {
         let result = task::spawn(run(
             OracleReader::new(preimage.client),
             HintWriter::new(hint.client),
-        )).await;
+        ))
+        .await;
         //let client_result = client_task.await;
         println!("server result: {:?}", result);
         drop(server_task);
         //println!("client result: {:?}", client_result);
         Ok(vec![])
         /*
-match client_result {
-    Ok(_) => {
-        let mut used = {
-            let mut lock = kv_store.write().await;
-            std::mem::take(&mut lock.used)
-        };
-        let local_key = PreimageKey::new_local(L2_ROLLUP_CONFIG_KEY.to());
-        let roll_up_config_json = serde_json::to_vec(&self.rollup_config)?;
-        used.insert(local_key, roll_up_config_json);
+        match client_result {
+            Ok(_) => {
+                let mut used = {
+                    let mut lock = kv_store.write().await;
+                    std::mem::take(&mut lock.used)
+                };
+                let local_key = PreimageKey::new_local(L2_ROLLUP_CONFIG_KEY.to());
+                let roll_up_config_json = serde_json::to_vec(&self.rollup_config)?;
+                used.insert(local_key, roll_up_config_json);
 
-        let entry_size = used.len();
-        let preimage = encode_to_bytes(used);
-        let preimage_bytes: Vec<u8> = preimage.into_vec().unwrap();
-        tracing::info!(
-            "Preimage entry: {}, size: {}",
-            entry_size,
-            preimage_bytes.len()
-        );
-        Ok(preimage_bytes)
-                Ok(vec![])
-            }
-            Err(e) => Err(e.into()),
-        }
-         */
+                let entry_size = used.len();
+                let preimage = encode_to_bytes(used);
+                let preimage_bytes: Vec<u8> = preimage.into_vec().unwrap();
+                tracing::info!(
+                    "Preimage entry: {}, size: {}",
+                    entry_size,
+                    preimage_bytes.len()
+                );
+                Ok(preimage_bytes)
+                        Ok(vec![])
+                    }
+                    Err(e) => Err(e.into()),
+                }
+                 */
     }
 }

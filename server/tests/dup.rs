@@ -1,16 +1,16 @@
-use std::env;
 use optimism_derivation::derivation::Derivation;
 use optimism_derivation::oracle::MemoryOracleClient;
 use optimism_derivation::types::Preimages;
+use optimism_preimage_maker::l2_client::L2Client;
+use optimism_preimage_maker::Request;
 use prost::Message;
 use serial_test::serial;
+use std::env;
 use tokio::time;
 use tokio::time::Instant;
 use tracing_subscriber::filter;
 use tracing_subscriber::layer::SubscriberExt;
 use tracing_subscriber::util::SubscriberInitExt;
-use optimism_preimage_maker::l2_client::L2Client;
-use optimism_preimage_maker::Request;
 
 fn init() {
     let filter = filter::EnvFilter::from_default_env().add_directive("info".parse().unwrap());
@@ -47,13 +47,16 @@ async fn get_latest_derivations(l2_client: &L2Client) -> Vec<(Request, u64)> {
             .unwrap()
             .hash;
         let agreed_output = l2_client.output_root_at(agreed_l2_number).await.unwrap();
-        requests.push((Request {
-            l1_head_hash: sync_status.finalized_l1.hash,
-            agreed_l2_head_hash: agreed_l2_hash,
-            agreed_l2_output_root: agreed_output.output_root,
-            l2_output_root: claiming_output.output_root,
-            l2_block_number: claiming_l2_number,
-        }, agreed_l2_number));
+        requests.push((
+            Request {
+                l1_head_hash: sync_status.finalized_l1.hash,
+                agreed_l2_head_hash: agreed_l2_hash,
+                agreed_l2_output_root: agreed_output.output_root,
+                l2_output_root: claiming_output.output_root,
+                l2_block_number: claiming_l2_number,
+            },
+            agreed_l2_number,
+        ));
     }
     return requests;
 }
@@ -73,7 +76,14 @@ async fn run_dup() {
         let elapsed = start.elapsed();
         let preimage_bytes = preimage_bytes.bytes().await.unwrap();
         let preimage = Preimages::decode(preimage_bytes.clone()).unwrap();
-        tracing::info!("{}-{},{},{},{}", request.l2_block_number, agreed, elapsed.as_secs(), preimage.preimages.len(), preimage_bytes.len());
+        tracing::info!(
+            "{}-{},{},{},{}",
+            request.l2_block_number,
+            agreed,
+            elapsed.as_secs(),
+            preimage.preimages.len(),
+            preimage_bytes.len()
+        );
         preimages.push(preimage.preimages);
     }
     tracing::info!("check preimage");
@@ -83,7 +93,7 @@ async fn run_dup() {
         dup_count.push(0);
     }
 
-    for (j, preimage ) in first.iter().enumerate() {
+    for (j, preimage) in first.iter().enumerate() {
         if j % 1000 == 0 {
             tracing::info!("checking preimage {}", j);
         }
@@ -93,7 +103,12 @@ async fn run_dup() {
             }
         }
     }
-    for (i, images ) in rest.iter().enumerate() {
-        tracing::info!("dup count {}: total_entry={}, exists_10={}", i, images.len(), dup_count[i]);
+    for (i, images) in rest.iter().enumerate() {
+        tracing::info!(
+            "dup count {}: total_entry={}, exists_10={}",
+            i,
+            images.len(),
+            dup_count[i]
+        );
     }
 }

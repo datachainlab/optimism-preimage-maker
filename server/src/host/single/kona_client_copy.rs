@@ -1,22 +1,22 @@
 //! Single-chain fault proof program entrypoint.
 
-use kona_client::fpvm_evm::FpvmOpEvmFactory;
 use alloy_consensus::Sealed;
 use alloy_primitives::B256;
 use core::fmt::Debug;
-use std::sync::Arc;
+use kona_client::fpvm_evm::FpvmOpEvmFactory;
 use kona_derive::{errors::PipelineErrorKind, prelude::EthereumDataSource};
 use kona_driver::{Driver, DriverError};
 use kona_executor::{ExecutorError, TrieDBProvider};
 use kona_preimage::{CommsClient, HintWriterClient, PreimageKey, PreimageOracleClient};
 use kona_proof::{
-    BootInfo, CachingOracle, HintType,
     errors::OracleProviderError,
     executor::KonaExecutor,
     l1::{OracleBlobProvider, OracleL1ChainProvider, OraclePipeline},
     l2::OracleL2ChainProvider,
     sync::new_oracle_pipeline_cursor,
+    BootInfo, CachingOracle, HintType,
 };
+use std::sync::Arc;
 use thiserror::Error;
 use tracing::{error, info};
 
@@ -50,8 +50,11 @@ where
     //                          PROLOGUE                          //
     ////////////////////////////////////////////////////////////////
 
-    let oracle =
-        Arc::new(CachingOracle::new(ORACLE_LRU_SIZE, oracle_client.clone(), hint_client.clone()));
+    let oracle = Arc::new(CachingOracle::new(
+        ORACLE_LRU_SIZE,
+        oracle_client.clone(),
+        hint_client.clone(),
+    ));
     let boot = BootInfo::load(oracle.as_ref()).await?;
     let rollup_config = Arc::new(boot.rollup_config);
     let safe_head_hash = fetch_safe_head_hash(oracle.as_ref(), boot.agreed_l2_output_root).await?;
@@ -102,7 +105,7 @@ where
         &mut l1_provider,
         &mut l2_provider,
     )
-        .await?;
+    .await?;
     l2_provider.set_cursor(cursor.clone());
 
     let evm_factory = FpvmOpEvmFactory::new(hint_client, oracle_client);
@@ -116,26 +119,28 @@ where
         l1_provider.clone(),
         l2_provider.clone(),
     )
-        .await?;
+    .await?;
     let rollup_config = rollup_config.clone();
     let result = tokio::spawn(async move {
-    let executor = KonaExecutor::new(
-        rollup_config.as_ref(),
-        l2_provider.clone(),
-        l2_provider,
-        evm_factory,
-        None,
-    );
-    let mut driver = Driver::new(cursor, executor, pipeline);
+        let executor = KonaExecutor::new(
+            rollup_config.as_ref(),
+            l2_provider.clone(),
+            l2_provider,
+            evm_factory,
+            None,
+        );
+        let mut driver = Driver::new(cursor, executor, pipeline);
 
-    // Run the derivation pipeline until we are able to produce the output root of the claimed
-    // L2 block.
+        // Run the derivation pipeline until we are able to produce the output root of the claimed
+        // L2 block.
         let rollup_config = rollup_config.clone();
         let (safe_head, output_root) = driver
             .advance_to_target(rollup_config.as_ref(), Some(boot.claimed_l2_block_number))
             .await?;
         Ok((safe_head, output_root))
-    }).await.unwrap();
+    })
+    .await
+    .unwrap();
     let (safe_head, output_root) = result.map_err(FaultProofProgramError::Driver)?;
 
     ////////////////////////////////////////////////////////////////
@@ -149,7 +154,10 @@ where
             output_root = ?output_root,
             "Failed to validate L2 block",
         );
-        return Err(FaultProofProgramError::InvalidClaim(output_root, boot.claimed_l2_output_root));
+        return Err(FaultProofProgramError::InvalidClaim(
+            output_root,
+            boot.claimed_l2_output_root,
+        ));
     }
 
     info!(
@@ -177,8 +185,13 @@ where
         .send(caching_oracle)
         .await?;
     caching_oracle
-        .get_exact(PreimageKey::new_keccak256(*agreed_l2_output_root), output_preimage.as_mut())
+        .get_exact(
+            PreimageKey::new_keccak256(*agreed_l2_output_root),
+            output_preimage.as_mut(),
+        )
         .await?;
 
-    output_preimage[96..128].try_into().map_err(OracleProviderError::SliceConversion)
+    output_preimage[96..128]
+        .try_into()
+        .map_err(OracleProviderError::SliceConversion)
 }
