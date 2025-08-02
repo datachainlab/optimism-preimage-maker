@@ -17,6 +17,7 @@ use kona_proof::HintType;
 use std::sync::Arc;
 use tokio::sync::RwLock;
 use tokio::task;
+use crate::host::single::store::{Clearable, MyMemoryKeyValueStore, MySplitKeyValueStore};
 
 #[derive(Debug, Clone)]
 pub struct DerivationRequest {
@@ -45,8 +46,8 @@ impl DerivationRequest {
             l2_output_root: self.l2_output_root,
             l2_block_number: self.l2_block_number,
         };
-        let mem_kv_store = MemoryKeyValueStore::new();
-        let split_kv_store = SplitKeyValueStore::new(local_kv_store, mem_kv_store);
+        let mem_kv_store = MyMemoryKeyValueStore::new();
+        let split_kv_store = MySplitKeyValueStore::new(local_kv_store, mem_kv_store);
         Ok(Arc::new(RwLock::new(TracingKeyValueStore::new(Box::new(
             split_kv_store,
         )))))
@@ -90,7 +91,7 @@ impl DerivationRequest {
             Ok(_) => {
                 let mut used = {
                     let mut lock = kv_store.write().await;
-                    std::mem::take(&mut lock.used)
+                    lock.clear()
                 };
                 let local_key = PreimageKey::new_local(L2_ROLLUP_CONFIG_KEY.to());
                 let roll_up_config_json = serde_json::to_vec(&self.rollup_config)?;

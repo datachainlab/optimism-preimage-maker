@@ -2,11 +2,13 @@
 
 use alloy_primitives::B256;
 use anyhow::Result;
+use hashbrown::HashMap;
 use kona_host::KeyValueStore;
 use kona_preimage::PreimageKey;
 use optimism_derivation::types::{Preimage, Preimages};
+use crate::host::single::store::Clearable;
 
-type Inner = Box<dyn KeyValueStore + Send + Sync>;
+type Inner = Box<dyn Clearable + Send + Sync>;
 
 pub struct TracingKeyValueStore {
     pub inner: Inner,
@@ -20,6 +22,10 @@ impl TracingKeyValueStore {
             used: Default::default(),
         }
     }
+    pub fn clear(&mut self) -> HashMap<PreimageKey, Vec<u8>> {
+        self.inner.clear();
+        std::mem::take(&mut self.used)
+    }
 }
 
 impl KeyValueStore for TracingKeyValueStore {
@@ -32,6 +38,7 @@ impl KeyValueStore for TracingKeyValueStore {
         self.used.insert(PreimageKey::try_from(key.0)?, value);
         Ok(())
     }
+
 }
 
 pub fn encode_to_bytes(used: hashbrown::HashMap<PreimageKey, Vec<u8>>) -> Preimages {
