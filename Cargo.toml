@@ -19,6 +19,9 @@ kona-preimage = {git="https://github.com/anton-rs/kona", rev= "kona-client/v1.0.
 kona-providers-alloy= { git="https://github.com/anton-rs/kona", rev= "kona-client/v1.0.2", default-features = false }
 kona-genesis = { git="https://github.com/anton-rs/kona", rev= "kona-client/v1.0.2", default-features = false }
 kona-protocol = { git="https://github.com/anton-rs/kona", rev= "kona-client/v1.0.2", default-features = false }
+kona-executor = { git="https://github.com/anton-rs/kona", rev= "kona-client/v1.0.2", default-features = false }
+kona-derive= {  git="https://github.com/anton-rs/kona", rev= "kona-client/v1.0.2", default-features = false }
+kona-driver= {   git="https://github.com/anton-rs/kona", rev= "kona-client/v1.0.2", default-features = false }
 
 # Alloy
 alloy-rlp = { version = "0.3.12", default-features = false }

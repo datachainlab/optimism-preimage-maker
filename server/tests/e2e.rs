@@ -18,8 +18,8 @@ fn init() {
         .try_init();
 }
 fn get_l2_client() -> L2Client {
-    let op_node_addr = format!("http://localhost:{}", env::var("L2_ROLLUP_PORT").unwrap());
-    let op_geth_addr = format!("http://localhost:{}", env::var("L2_GETH_PORT").unwrap());
+    let op_node_addr = "http://localhost:55524".to_string();
+    let op_geth_addr = "http://localhost:55514".to_string();
     tracing::info!(
         "Starting with op_node_addr: {} op_geth_addr: {}",
         op_node_addr,

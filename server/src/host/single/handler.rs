@@ -16,6 +16,7 @@ use kona_proof::HintType;
 use std::sync::Arc;
 use tokio::sync::RwLock;
 use tokio::task;
+use crate::host::single::runner::run;
 
 #[derive(Debug, Clone)]
 pub struct DerivationRequest {
@@ -34,7 +35,16 @@ impl DerivationRequest {
     fn create_key_value_store(&self) -> Result<Arc<RwLock<TracingKeyValueStore>>> {
         // Only memory store is traceable
         // Using disk causes insufficient blob preimages in ELC because the already stored data is not traceable
-        let local_kv_store = LocalKeyValueStore::new(self.clone());
+        let local_kv_store = LocalKeyValueStore {
+            config: self.config.clone(),
+            rollup_config: self.rollup_config.clone(),
+            l2_chain_id: self.l2_chain_id,
+            agreed_l2_head_hash: self.agreed_l2_head_hash,
+            agreed_l2_output_root: self.agreed_l2_output_root,
+            l1_head_hash: self.l1_head_hash,
+            l2_output_root: self.l2_output_root,
+            l2_block_number: self.l2_block_number,
+        };
         let mem_kv_store = MemoryKeyValueStore::new();
         let split_kv_store = SplitKeyValueStore::new(local_kv_store, mem_kv_store);
         Ok(Arc::new(RwLock::new(TracingKeyValueStore::new(Box::new(
@@ -70,36 +80,39 @@ impl DerivationRequest {
             )
             .start(),
         );
-        let client_task = task::spawn(kona_client::single::run(
+        let result = task::spawn(run(
             OracleReader::new(preimage.client),
             HintWriter::new(hint.client),
-        ));
+        )).await;
+        //let client_result = client_task.await;
+        println!("server result: {:?}", result);
+        drop(server_task);
+        //println!("client result: {:?}", client_result);
+        Ok(vec![])
+        /*
+match client_result {
+    Ok(_) => {
+        let mut used = {
+            let mut lock = kv_store.write().await;
+            std::mem::take(&mut lock.used)
+        };
+        let local_key = PreimageKey::new_local(L2_ROLLUP_CONFIG_KEY.to());
+        let roll_up_config_json = serde_json::to_vec(&self.rollup_config)?;
+        used.insert(local_key, roll_up_config_json);
 
-        let (_, client_result) = tokio::try_join!(server_task, client_task)?;
-        match client_result {
-            Ok(_) => {
-                /*
-                let mut used = {
-                    let mut lock = kv_store.write().await;
-                    std::mem::take(&mut lock.used)
-                };
-                let local_key = PreimageKey::new_local(L2_ROLLUP_CONFIG_KEY.to());
-                let roll_up_config_json = serde_json::to_vec(&self.rollup_config)?;
-                used.insert(local_key, roll_up_config_json);
-
-                let entry_size = used.len();
-                let preimage = encode_to_bytes(used);
-                let preimage_bytes: Vec<u8> = preimage.into_vec().unwrap();
-                tracing::info!(
-                    "Preimage entry: {}, size: {}",
-                    entry_size,
-                    preimage_bytes.len()
-                );
-                Ok(preimage_bytes)
-                 */
+        let entry_size = used.len();
+        let preimage = encode_to_bytes(used);
+        let preimage_bytes: Vec<u8> = preimage.into_vec().unwrap();
+        tracing::info!(
+            "Preimage entry: {}, size: {}",
+            entry_size,
+            preimage_bytes.len()
+        );
+        Ok(preimage_bytes)
                 Ok(vec![])
             }
             Err(e) => Err(e.into()),
         }
+         */
     }
 }

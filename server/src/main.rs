@@ -11,8 +11,9 @@ mod host;
 pub mod l2_client;
 mod server;
 
-#[tokio::main]
+#[tokio::main(flavor = "multi_thread")]
 async fn main() -> anyhow::Result<()> {
+    console_subscriber::init();
     let config = Config::parse();
 
     // start tracing
@@ -21,7 +22,7 @@ async fn main() -> anyhow::Result<()> {
     tracing_subscriber::registry()
         .with(tracing_subscriber::fmt::layer())
         .with(filter)
-        .init();
+        .try_init();
     info!("start optimism preimage-maker");
 
     let l2_client = L2Client::new(
