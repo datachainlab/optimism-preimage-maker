@@ -9,13 +9,13 @@ use kona_genesis::RollupConfig;
 use kona_host::single::{SingleChainHintHandler, SingleChainHost};
 use kona_host::{MemoryKeyValueStore, OnlineHostBackend, PreimageServer, SplitKeyValueStore};
 use kona_preimage::{
-    BidirectionalChannel, HintReader, HintWriter, OracleReader, OracleServer, PreimageKey,
+    BidirectionalChannel, HintReader, HintWriter, NativeChannel, OracleReader, OracleServer,
+    PreimageKey,
 };
 use kona_proof::boot::L2_ROLLUP_CONFIG_KEY;
 use kona_proof::HintType;
 use std::sync::Arc;
 use tokio::sync::RwLock;
-use tokio::task;
 
 #[derive(Debug, Clone)]
 pub struct DerivationRequest {
@@ -42,6 +42,35 @@ impl DerivationRequest {
         )))))
     }
 
+    async fn run_server(
+        &self,
+        preimage_host: NativeChannel,
+        hint_host: NativeChannel,
+        backend: OnlineHostBackend<SingleChainHost, SingleChainHintHandler>,
+    ) -> Result<()> {
+        PreimageServer::new(
+            OracleServer::new(preimage_host),
+            HintReader::new(hint_host),
+            Arc::new(backend),
+        )
+        .start()
+        .await
+        .map_err(|e| e.into())
+    }
+
+    async fn run_client(
+        &self,
+        preimage_client: NativeChannel,
+        hint_client: NativeChannel,
+    ) -> Result<()> {
+        kona_client::single::run(
+            OracleReader::new(preimage_client),
+            HintWriter::new(hint_client),
+        )
+        .await
+        .map_err(|e| e.into())
+    }
+
     pub async fn start(&self) -> Result<Vec<u8>> {
         let hint = BidirectionalChannel::new()?;
         let preimage = BidirectionalChannel::new()?;
@@ -62,41 +91,27 @@ impl DerivationRequest {
             OnlineHostBackend::new(cfg, kv_store.clone(), providers, SingleChainHintHandler)
                 .with_proactive_hint(HintType::L2PayloadWitness);
 
-        let server_task = task::spawn(
-            PreimageServer::new(
-                OracleServer::new(preimage.host),
-                HintReader::new(hint.host),
-                Arc::new(backend),
-            )
-            .start(),
+        let server_task = self.run_server(preimage.host, hint.host, backend);
+        let client_task = self.run_client(preimage.client, hint.client);
+        tokio::try_join!(server_task, client_task)?;
+
+        // Collect preimages from the kv store
+        let mut used = {
+            let mut lock = kv_store.write().await;
+            std::mem::take(&mut lock.used)
+        };
+        let local_key = PreimageKey::new_local(L2_ROLLUP_CONFIG_KEY.to());
+        let roll_up_config_json = serde_json::to_vec(&self.rollup_config)?;
+        used.insert(local_key, roll_up_config_json);
+
+        let entry_size = used.len();
+        let preimage = encode_to_bytes(used);
+        let preimage_bytes: Vec<u8> = preimage.into_vec().unwrap();
+        tracing::info!(
+            "Preimage entry: {}, size: {}",
+            entry_size,
+            preimage_bytes.len()
         );
-        let client_task = task::spawn(kona_client::single::run(
-            OracleReader::new(preimage.client),
-            HintWriter::new(hint.client),
-        ));
-
-        let (_, client_result) = tokio::try_join!(server_task, client_task)?;
-        match client_result {
-            Ok(_) => {
-                let mut used = {
-                    let mut lock = kv_store.write().await;
-                    std::mem::take(&mut lock.used)
-                };
-                let local_key = PreimageKey::new_local(L2_ROLLUP_CONFIG_KEY.to());
-                let roll_up_config_json = serde_json::to_vec(&self.rollup_config)?;
-                used.insert(local_key, roll_up_config_json);
-
-                let entry_size = used.len();
-                let preimage = encode_to_bytes(used);
-                let preimage_bytes: Vec<u8> = preimage.into_vec().unwrap();
-                tracing::info!(
-                    "Preimage entry: {}, size: {}",
-                    entry_size,
-                    preimage_bytes.len()
-                );
-                Ok(preimage_bytes)
-            }
-            Err(e) => Err(e.into()),
-        }
+        Ok(preimage_bytes)
     }
 }

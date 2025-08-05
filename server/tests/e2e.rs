@@ -91,7 +91,7 @@ async fn test_make_preimages_success() {
         Err(e) => {
             tracing::error!("Derivation verification failed: {:?}", e);
             panic!("Derivation verification failed");
-        },
+        }
     }
 }
 
