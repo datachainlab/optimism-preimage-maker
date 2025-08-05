@@ -6,14 +6,19 @@ use crate::host::single::trace::{encode_to_bytes, TracingKeyValueStore};
 use alloy_primitives::B256;
 use anyhow::Result;
 use kona_genesis::RollupConfig;
-use kona_host::single::{SingleChainHintHandler, SingleChainHost};
+use kona_host::single::{SingleChainHintHandler, SingleChainHost, SingleChainHostError, SingleChainProviders};
 use kona_host::{MemoryKeyValueStore, OnlineHostBackend, PreimageServer, SplitKeyValueStore};
 use kona_preimage::{BidirectionalChannel, HintReader, HintWriter, NativeChannel, OracleReader, OracleServer, PreimageKey};
 use kona_proof::boot::L2_ROLLUP_CONFIG_KEY;
 use kona_proof::HintType;
 use std::sync::Arc;
+use alloy_rpc_types_beacon::sidecar::BlobData;
+use kona_host::eth::http_provider;
+use kona_providers_alloy::{OnlineBeaconClient, OnlineBlobProvider};
+use op_alloy_network::Optimism;
 use tokio::sync::RwLock;
 use tokio::task;
+use crate::host::single::provider::{Cache, OnlineBeaconClientProxy};
 
 #[derive(Debug, Clone)]
 pub struct DerivationRequest {
@@ -29,6 +34,21 @@ pub struct DerivationRequest {
 }
 
 impl DerivationRequest {
+
+    async fn create_providers(&self, cache: Cache) -> Result<SingleChainProviders> {
+        let l1_provider = http_provider(&self.config.l1_node_address)?;
+        let beacon_client = OnlineBeaconClient::new_http(
+            self.config.l1_beacon_address.clone()
+        );
+        let proxy = OnlineBeaconClientProxy::new(beacon_client, cache);
+        let blob_provider = OnlineBlobProvider::init(proxy).await;
+
+        let l2_provider = http_provider::<Optimism>(
+            self.config. l2_node_address.as_ref()
+        );
+        Ok(SingleChainProviders { l1: l1_provider, blobs: blob_provider, l2: l2_provider })
+    }
+
     fn create_key_value_store(&self) -> Result<Arc<RwLock<TracingKeyValueStore>>> {
         // Only memory store is traceable
         // Using disk causes insufficient blob preimages in ELC because the already stored data is not traceable
@@ -54,7 +74,7 @@ impl DerivationRequest {
         ).await.map_err(|e| e.into())
     }
 
-    pub async fn start(&self) -> Result<Vec<u8>> {
+    pub async fn start(&self, cache: Cache) -> Result<Vec<u8>> {
         let hint = BidirectionalChannel::new()?;
         let preimage = BidirectionalChannel::new()?;
         let kv_store = self.create_key_value_store()?;
@@ -69,7 +89,8 @@ impl DerivationRequest {
             claimed_l2_block_number: self.l2_block_number,
             ..Default::default()
         };
-        let providers = cfg.create_providers().await?;
+        let providers = self.create_providers(cache).await?;
+
         let backend =
             OnlineHostBackend::new(cfg, kv_store.clone(), providers, SingleChainHintHandler)
                 .with_proactive_hint(HintType::L2PayloadWitness);

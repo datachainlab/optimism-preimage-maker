@@ -13,11 +13,13 @@ use std::sync::Arc;
 use tokio::net::TcpListener;
 use tokio::task::JoinHandle;
 use tracing::{error, info};
+use crate::host::single::provider::Cache;
 
 pub struct DerivationState {
     pub rollup_config: RollupConfig,
     pub config: Config,
     pub l2_chain_id: u64,
+    pub cache: Cache
 }
 
 async fn start_http_server(addr: &str, derivation_state: DerivationState) -> Result<()> {
@@ -71,7 +73,7 @@ async fn derivation(
         l2_block_number: payload.l2_block_number,
     };
 
-    match derivation.start().await {
+    match derivation.start(state.cache.clone()).await {
         Ok(preimage) => {
             info!("derivation success");
             (StatusCode::OK, preimage)

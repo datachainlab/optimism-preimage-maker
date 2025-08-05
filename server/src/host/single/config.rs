@@ -30,4 +30,7 @@ pub struct Config {
     /// look up the config in the superchain registry.
     #[clap(long, default_value = "0.0.0.0:10080")]
     pub http_server_addr: String,
+    /// Max cache entry for L1 blob sidecars.
+    #[clap(long, default_value = 100_000)]
+    pub l1_blob_max_cache_entry: u64,
 }

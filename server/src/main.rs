@@ -6,6 +6,7 @@ use tracing::info;
 use tracing_subscriber::filter;
 use tracing_subscriber::layer::SubscriberExt;
 use tracing_subscriber::util::SubscriberInitExt;
+use crate::host::single::provider::Cache;
 
 mod host;
 pub mod l2_client;
@@ -22,7 +23,7 @@ async fn main() -> anyhow::Result<()> {
         .with(tracing_subscriber::fmt::layer())
         .with(filter)
         .init();
-    info!("start optimism preimage-maker");
+    info!("start optimism preimage-maker: {:?}", config);
 
     let l2_client = L2Client::new(
         config.l2_rollup_address.to_string(),
@@ -38,6 +39,7 @@ async fn main() -> anyhow::Result<()> {
             rollup_config: rollup_config.clone(),
             config: config.clone(),
             l2_chain_id: chain_id,
+            cache: Cache::new(config.l1_blob_max_cache_entry)
         },
     );
 
