@@ -69,6 +69,8 @@ async fn test_make_preimages_success() {
     let client = reqwest::Client::new();
     let builder = client.post("http://localhost:10080/derivation");
     let preimage_bytes = builder.json(&request).send().await.unwrap();
+    assert_eq!(preimage_bytes.status(), 200);
+
     let preimage_bytes = preimage_bytes.bytes().await.unwrap();
     let rollup_config = l2_client.rollup_config().await.unwrap();
 
@@ -86,7 +88,10 @@ async fn test_make_preimages_success() {
     let result = derivation.verify(chain_id, &rollup_config, oracle);
     match result {
         Ok(h) => tracing::info!("Derivation verified successfully {:? }", h),
-        Err(e) => tracing::error!("Derivation verification failed: {:?}", e),
+        Err(e) => {
+            tracing::error!("Derivation verification failed: {:?}", e);
+            panic!("Derivation verification failed");
+        },
     }
 }
 
