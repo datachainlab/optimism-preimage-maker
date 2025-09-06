@@ -48,3 +48,10 @@ devnet-down:
 	@ENCLAVE=$$(kurtosis enclave ls | awk 'NR==2 {print $$1}'); kurtosis enclave rm -f $$ENCLAVE
 	kurtosis engine stop
 
+PHONY: sync-lock
+sync-lock:
+	cargo update -p kona-client
+	cd scripts && python sync_lock.py
+	# Check build
+	# Downgrade the crate that does not exist in op-rs, which was unnecessarily upgraded by cargo update.
+	cargo build
