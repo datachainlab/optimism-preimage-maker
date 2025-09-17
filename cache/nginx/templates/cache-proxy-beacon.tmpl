@@ -1,0 +1,18 @@
+proxy_cache_path /var/cache/nginx/beacon levels=1:2 keys_zone=beacon_cache:30m max_size=1g inactive=60m use_temp_path=off;
+
+server {
+    listen 8080;
+
+    location / {
+        proxy_pass http://host.docker.internal:L1_BEACON_PORT;
+
+        proxy_cache beacon_cache;
+        proxy_cache_methods GET;
+
+        proxy_cache_key "$scheme$request_method$host$request_uri";
+
+        proxy_cache_valid 200 30m;
+        proxy_cache_valid any 0s;
+
+    }
+}

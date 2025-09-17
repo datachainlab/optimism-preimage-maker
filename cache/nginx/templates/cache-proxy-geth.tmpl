@@ -1,0 +1,24 @@
+proxy_cache_path /var/cache/nginx/geth levels=1:2 keys_zone=geth_cache:30m max_size=1g inactive=60m use_temp_path=off;
+
+server {
+    listen 8090;
+
+    location / {
+        proxy_pass http://host.docker.internal:L1_GETH_PORT/;
+
+        proxy_cache geth_cache;
+        proxy_cache_methods POST;
+
+        proxy_cache_key "$scheme$request_method$host$uri$http_x_request_hash";
+        set $no_cache 0;
+        if ($http_x_request_hash = "") {
+            set $no_cache 1;
+        }
+        proxy_cache_bypass $no_cache;
+        proxy_no_cache $no_cache;
+
+        proxy_cache_valid 200 30m;
+        proxy_cache_valid any 0s;
+
+    }
+}

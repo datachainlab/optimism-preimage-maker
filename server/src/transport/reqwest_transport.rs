@@ -4,7 +4,7 @@ use alloy_transport::{TransportError, TransportErrorKind, TransportFut, Transpor
 use reqwest::Client;
 use std::task;
 use tower::Service;
-use tracing::{debug, debug_span, info, trace, Instrument};
+use tracing::{debug, trace};
 use url::Url;
 
 use crate::transport::Http;
@@ -19,7 +19,9 @@ impl Http<Client> {
     }
 
     async fn do_reqwest(self, req: RequestPacket) -> TransportResult<ResponsePacket> {
-        let hash = from_request_to_hash(&req);
+        let hash = from_request_to_hash(&req)
+            .map_err(|err| TransportError::deser_err(err, "invalid request for hashing"))?;
+
         let mut headers = req.headers();
         headers.insert("X-Request-Hash", hash.to_string().parse().unwrap());
 
@@ -35,15 +37,8 @@ impl Http<Client> {
 
         debug!(%status, "received response from server");
 
-        // Unpack data from the response body. We do this regardless of
-        // the status code, as we want to return the error in the body
-        // if there is one.
         let body = resp.bytes().await.map_err(TransportErrorKind::custom)?;
 
-        debug!(
-            bytes = body.len(),
-            "retrieved response body. Use `trace` for full body"
-        );
         trace!(body = %String::from_utf8_lossy(&body), "response body");
 
         if !status.is_success() {
@@ -53,9 +48,6 @@ impl Http<Client> {
             ));
         }
 
-        // Deserialize a Box<RawValue> from the body. If deserialization fails, return
-        // the body as a string in the error. The conversion to String
-        // is lossy and may not cover all the bytes in the body.
         serde_json::from_slice(&body)
             .map_err(|err| TransportError::deser_err(err, String::from_utf8_lossy(&body)))
     }
@@ -66,22 +58,19 @@ impl Service<RequestPacket> for Http<Client> {
     type Error = TransportError;
     type Future = TransportFut<'static>;
 
-    #[inline]
     fn poll_ready(&mut self, _cx: &mut task::Context<'_>) -> task::Poll<Result<(), Self::Error>> {
         task::Poll::Ready(Ok(()))
     }
 
-    #[inline]
     fn call(&mut self, req: RequestPacket) -> Self::Future {
         let this = self.clone();
-        let span = debug_span!("ReqwestTransport", url = %this.url);
-        Box::pin(this.do_reqwest(req).instrument(span))
+        Box::pin(this.do_reqwest(req))
     }
 }
 
-fn from_request_to_hash(req: &RequestPacket) -> B256 {
-    match req {
-        RequestPacket::Single(r) => r.params_hash(),
+fn from_request_to_hash(req: &RequestPacket) -> Result<B256, serde_json::Error> {
+    let body = match &req {
+        RequestPacket::Single(r) => serde_json::to_vec(r)?,
         RequestPacket::Batch(_) => {
             let mut value = vec![];
             if let Some(batch) = req.as_batch() {
@@ -89,7 +78,8 @@ fn from_request_to_hash(req: &RequestPacket) -> B256 {
                     value.extend_from_slice(&r.params_hash().0);
                 }
             }
-            keccak256(&value)
+            value
         }
-    }
+    };
+    Ok(keccak256(&body))
 }

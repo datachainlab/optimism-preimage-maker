@@ -26,3 +26,4 @@ target/
 *.bin
 *.json
 chain
+cache/nginx/sites-enabled
