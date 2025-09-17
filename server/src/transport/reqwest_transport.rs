@@ -1,34 +1,15 @@
 use alloy_json_rpc::{RequestPacket, ResponsePacket};
 use alloy_primitives::{keccak256, B256};
-use alloy_transport::{
-    utils::guess_local_url, BoxTransport, TransportConnect, TransportError, TransportErrorKind,
-    TransportFut, TransportResult,
-};
+use alloy_transport::{TransportError, TransportErrorKind, TransportFut, TransportResult};
 use reqwest::Client;
 use std::task;
 use tower::Service;
 use tracing::{debug, debug_span, info, trace, Instrument};
 use url::Url;
 
-use crate::transport::{Http, HttpConnect};
+use crate::transport::Http;
 
-pub type ReqwestTransport = Http<Client>;
-
-pub type ReqwestConnect = HttpConnect<ReqwestTransport>;
-
-impl TransportConnect for ReqwestConnect {
-    fn is_local(&self) -> bool {
-        guess_local_url(self.url.as_str())
-    }
-
-    async fn get_transport(&self) -> Result<BoxTransport, TransportError> {
-        Ok(BoxTransport::new(Http::with_client(
-            Client::new(),
-            self.url.clone(),
-        )))
-    }
-}
-
+/// Http client with reqwest
 impl Http<Client> {
     pub fn new(url: Url) -> Self {
         Self {
@@ -41,7 +22,6 @@ impl Http<Client> {
         let hash = from_request_to_hash(&req);
         let mut headers = req.headers();
         headers.insert("X-Request-Hash", hash.to_string().parse().unwrap());
-        info!("Request Hash: {}", hash);
 
         let resp = self
             .client
