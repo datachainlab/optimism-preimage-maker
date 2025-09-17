@@ -10,6 +10,7 @@ use tracing_subscriber::util::SubscriberInitExt;
 mod host;
 pub mod l2_client;
 mod server;
+mod transport;
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
