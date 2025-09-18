@@ -4,7 +4,7 @@ server {
     listen 8090;
 
     location / {
-        proxy_pass http://host.docker.internal:L1_GETH_PORT/;
+        proxy_pass http://host.docker.internal:L1_GETH_PORT;
 
         proxy_cache geth_cache;
         proxy_cache_methods POST;

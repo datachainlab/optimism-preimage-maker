@@ -3,7 +3,7 @@ proxy_cache_path /var/cache/nginx/beacon levels=1:2 keys_zone=beacon_cache:30m m
 server {
     listen 8080;
 
-    location / {
+    location /eth/ {
         proxy_pass http://host.docker.internal:L1_BEACON_PORT;
 
         proxy_cache beacon_cache;
