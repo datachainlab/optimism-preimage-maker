@@ -3,7 +3,7 @@
 use crate::host::single::config::Config;
 use crate::host::single::local_kv::LocalKeyValueStore;
 use crate::host::single::trace::{encode_to_bytes, TracingKeyValueStore};
-use crate::transport::Transport;
+use crate::transport::{DefaultTransport, Http, Transport};
 use alloy_primitives::B256;
 use alloy_provider::RootProvider;
 use alloy_rpc_client::RpcClient;
@@ -22,7 +22,11 @@ use kona_proof::HintType;
 use kona_providers_alloy::{OnlineBeaconClient, OnlineBlobProvider};
 use op_alloy_network::{Network, Optimism};
 use std::sync::Arc;
+use reqwest::Proxy;
 use tokio::sync::RwLock;
+use crate::transport::lru::LruProxy;
+#[cfg(feature = "lru")]
+use crate::transport::lru::LruProxy;
 
 #[derive(Debug, Clone)]
 pub struct DerivationRequest {
@@ -66,7 +70,9 @@ impl DerivationRequest {
 
     fn http_provider<N: Network>(url: &str) -> RootProvider<N> {
         let url = url.parse().unwrap();
-        let http = Transport::new(url);
+        let transport = DefaultTransport::new(url);
+        let transport = LruProxy::new(200_000, transport);
+        let http = Http::new(transport);
         RootProvider::new(RpcClient::new(http, true))
     }
 

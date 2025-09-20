@@ -4,9 +4,9 @@ use alloy_transport::{TransportError, TransportFut};
 use std::task;
 use tower::Service;
 
-use crate::transport::Transport;
+use crate::transport::{Http, Transport};
 
-impl Service<RequestPacket> for Transport {
+impl <T:Transport> Service<RequestPacket> for Http<T> {
     type Response = ResponsePacket;
     type Error = TransportError;
     type Future = TransportFut<'static>;
@@ -31,7 +31,7 @@ impl Service<RequestPacket> for Transport {
         headers.insert("X-Request-Hash", hash.to_string().parse().unwrap());
 
         let this = self.clone();
-        Box::pin(this.post(req, headers))
+        Box::pin(this.inner.post(req, headers))
     }
 }
 
