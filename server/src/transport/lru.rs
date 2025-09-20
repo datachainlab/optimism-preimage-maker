@@ -5,14 +5,13 @@ use axum::async_trait;
 use axum::http::HeaderMap;
 use lru::LruCache;
 use std::sync::atomic::AtomicU64;
-use std::sync::Arc;
-use tokio::sync::RwLock;
+use std::sync::{Arc, Mutex};
 
-pub type Cache = Arc<RwLock<LruCache<String, ResponsePacket>>>;
+pub type Cache = Arc<Mutex<LruCache<String, ResponsePacket>>>;
 
 pub fn new_cache(size: usize) -> Cache {
     let cache = LruCache::new(std::num::NonZeroUsize::new(size).expect("N must be greater than 0"));
-    Arc::new(RwLock::new(cache))
+    Arc::new(Mutex::new(cache))
 }
 
 #[derive(Debug)]
@@ -74,21 +73,21 @@ impl<T: Transport> Transport for LruProxy<T> {
     async fn post(self, req: RequestPacket, headers: HeaderMap) -> TransportResult<ResponsePacket> {
         if let Some(value) = headers.get("X-Request-Hash") {
             let hash = value.to_str().unwrap().to_string();
-            let mut cache = self.cache.write().await;
-            return match cache.get(&hash) {
-                Some(v) => {
+            {
+                let mut cache = self.cache.lock().unwrap();
+                if let Some(v) = cache.get(&hash) {
                     self.metrics.hit();
-                    Ok(v.clone())
+                    return Ok(v.clone());
                 }
-                None => {
-                    self.metrics.miss();
-                    let result = self.inner.post(req, headers).await?;
-                    cache.put(hash, result.clone());
-                    Ok(result)
-                }
-            };
+            }
+            self.metrics.miss();
+            let result = self.inner.post(req, headers).await?;
+            {
+                let mut cache = self.cache.lock().unwrap();
+                cache.put(hash, result.clone());
+            }
+            return Ok(result);
         };
-
         self.inner.post(req, headers).await
     }
 }
