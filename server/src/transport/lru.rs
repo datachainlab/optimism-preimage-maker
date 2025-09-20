@@ -1,88 +1,92 @@
-use std::sync::{Arc};
+use crate::transport::Transport;
 use alloy_json_rpc::{RequestPacket, ResponsePacket};
-use alloy_transport::{TransportResult};
+use alloy_transport::TransportResult;
 use axum::async_trait;
 use axum::http::HeaderMap;
 use lru::LruCache;
+use std::sync::atomic::AtomicU64;
+use std::sync::Arc;
 use tokio::sync::RwLock;
-use crate::transport::Transport;
 
-#[derive(Clone, Debug)]
-struct Metrics {
-    hits: u128,
-    misses: u128,
+pub type Cache = Arc<RwLock<LruCache<String, ResponsePacket>>>;
+
+pub fn new_cache(size: usize) -> Cache {
+    let cache = LruCache::new(std::num::NonZeroUsize::new(size).expect("N must be greater than 0"));
+    Arc::new(RwLock::new(cache))
+}
+
+#[derive(Debug)]
+pub struct Metrics {
+    hits: AtomicU64,
+    misses: AtomicU64,
+}
+
+impl Default for Metrics {
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 impl Metrics {
-    fn new() -> Self {
-        Self { hits: 0, misses: 0 }
-    }
-    fn hit(&mut self) {
-        self.hits += 1;
-    }
-
-    fn miss(&mut self) {
-        self.misses += 1;
-    }
-
-    fn hit_rate(&self) -> f64 {
-        if self.hits + self.misses == 0 {
-            0.0
-        } else {
-            self.hits as f64 / (self.hits + self.misses) as f64
+    pub fn new() -> Self {
+        Self {
+            hits: AtomicU64::new(0),
+            misses: AtomicU64::new(0),
         }
     }
-
-    fn miss_rate(&self) -> f64 {
-        if self.hits + self.misses == 0 {
-            0.0
-        } else {
-            self.misses as f64 / (self.hits + self.misses) as f64
-        }
+    pub fn hit(&self) {
+        self.hits.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
     }
 
-    fn total_requests(&self) -> u128 {
-        self.hits + self.misses
+    pub fn miss(&self) {
+        self.misses
+            .fetch_add(1, std::sync::atomic::Ordering::Relaxed);
     }
 
+    pub fn get_hits(&self) -> u64 {
+        self.hits.load(std::sync::atomic::Ordering::Relaxed)
+    }
+
+    pub fn get_misses(&self) -> u64 {
+        self.misses.load(std::sync::atomic::Ordering::Relaxed)
+    }
 }
 
 #[derive(Clone, Debug)]
 pub struct LruProxy<T: Transport> {
-    cache: Arc<RwLock<(LruCache<String, ResponsePacket>, Metrics)>>,
-    inner: T
+    cache: Cache,
+    metrics: Arc<Metrics>,
+    inner: T,
 }
 
-impl <T:Transport> LruProxy<T> {
-    pub fn new(cache_size: usize, inner: T) -> Self {
-        let cache = LruCache::new(
-            std::num::NonZeroUsize::new(cache_size).expect("N must be greater than 0"),
-        );
+impl<T: Transport> LruProxy<T> {
+    pub fn new(cache: Cache, metrics: Arc<Metrics>, inner: T) -> Self {
         Self {
-            cache: Arc::new(RwLock::new((cache,  Metrics::new()))),
+            cache,
+            metrics,
             inner,
         }
     }
 }
 
 #[async_trait]
-impl <T: Transport> Transport for LruProxy<T> {
+impl<T: Transport> Transport for LruProxy<T> {
     async fn post(self, req: RequestPacket, headers: HeaderMap) -> TransportResult<ResponsePacket> {
         if let Some(value) = headers.get("X-Request-Hash") {
             let hash = value.to_str().unwrap().to_string();
             let mut cache = self.cache.write().await;
-            return match cache.0.get(&hash) {
+            return match cache.get(&hash) {
                 Some(v) => {
-                    cache.1.hit();
+                    self.metrics.hit();
                     Ok(v.clone())
-                },
+                }
                 None => {
-                    cache.1.miss();
+                    self.metrics.miss();
                     let result = self.inner.post(req, headers).await?;
-                    cache.0.put(hash, result.clone());
+                    cache.put(hash, result.clone());
                     Ok(result)
                 }
-            }
+            };
         };
 
         self.inner.post(req, headers).await

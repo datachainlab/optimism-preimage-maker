@@ -1,7 +1,9 @@
 use crate::host::single::config::Config;
 use crate::server::{start_http_server_task, DerivationState};
+use crate::transport::lru::{new_cache, Metrics};
 use clap::Parser;
 use l2_client::L2Client;
+use std::sync::Arc;
 use tracing::info;
 use tracing_subscriber::filter;
 use tracing_subscriber::layer::SubscriberExt;
@@ -10,7 +12,7 @@ use tracing_subscriber::util::SubscriberInitExt;
 mod host;
 pub mod l2_client;
 mod server;
-mod transport;
+pub mod transport;
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
@@ -38,6 +40,8 @@ async fn main() -> anyhow::Result<()> {
         DerivationState {
             rollup_config: rollup_config.clone(),
             config: config.clone(),
+            cache: new_cache(200_000),
+            metrics: Arc::new(Metrics::new()),
             l2_chain_id: chain_id,
         },
     );

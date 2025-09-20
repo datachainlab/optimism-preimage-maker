@@ -2,12 +2,12 @@ pub mod hash;
 
 pub mod lru;
 
-use std::fmt::Debug;
 use alloy_json_rpc::{RequestPacket, ResponsePacket};
 use alloy_transport::{TransportError, TransportErrorKind, TransportResult};
 use axum::async_trait;
 use reqwest::header::HeaderMap;
 use reqwest::Client;
+use std::fmt::Debug;
 use tracing::{debug, trace};
 use url::Url;
 
@@ -16,17 +16,16 @@ pub struct Http<T: Transport> {
     inner: T,
 }
 
-impl <T: Transport> Http<T> {
+impl<T: Transport> Http<T> {
     pub fn new(inner: T) -> Self {
         Self { inner }
     }
 }
 
 #[async_trait]
-pub trait Transport : Send + Sync + Debug + Clone + 'static {
+pub trait Transport: Send + Sync + Debug + Clone + 'static {
     async fn post(self, req: RequestPacket, headers: HeaderMap) -> TransportResult<ResponsePacket>;
 }
-
 
 /// An HTTP transport using `reqwest` referencing alloy-http-transport `Http<T>`
 #[derive(Clone, Debug)]

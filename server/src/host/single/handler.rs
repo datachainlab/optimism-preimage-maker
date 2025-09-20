@@ -3,7 +3,10 @@
 use crate::host::single::config::Config;
 use crate::host::single::local_kv::LocalKeyValueStore;
 use crate::host::single::trace::{encode_to_bytes, TracingKeyValueStore};
-use crate::transport::{DefaultTransport, Http, Transport};
+#[cfg(feature = "lru")]
+use crate::transport::lru::LruProxy;
+use crate::transport::lru::{Cache, LruProxy, Metrics};
+use crate::transport::{DefaultTransport, Http};
 use alloy_primitives::B256;
 use alloy_provider::RootProvider;
 use alloy_rpc_client::RpcClient;
@@ -22,14 +25,12 @@ use kona_proof::HintType;
 use kona_providers_alloy::{OnlineBeaconClient, OnlineBlobProvider};
 use op_alloy_network::{Network, Optimism};
 use std::sync::Arc;
-use reqwest::Proxy;
 use tokio::sync::RwLock;
-use crate::transport::lru::LruProxy;
-#[cfg(feature = "lru")]
-use crate::transport::lru::LruProxy;
 
 #[derive(Debug, Clone)]
 pub struct DerivationRequest {
+    pub cache: Cache,
+    pub metrics: Arc<Metrics>,
     pub config: Config,
     pub rollup_config: RollupConfig,
     pub l2_chain_id: u64,
@@ -55,12 +56,20 @@ impl DerivationRequest {
 
     /// Creates the providers required for the host backend.
     async fn create_providers(&self) -> Result<SingleChainProviders, SingleChainHostError> {
-        let l1_provider = Self::http_provider(&self.config.l1_node_address);
+        let l1_provider = Self::http_provider(
+            &self.config.l1_node_address,
+            self.cache.clone(),
+            self.metrics.clone(),
+        );
         let blob_provider = OnlineBlobProvider::init(OnlineBeaconClient::new_http(
             self.config.l1_beacon_address.clone(),
         ))
         .await;
-        let l2_provider = Self::http_provider::<Optimism>(&self.config.l2_node_address);
+        let l2_provider = Self::http_provider::<Optimism>(
+            &self.config.l2_node_address,
+            self.cache.clone(),
+            self.metrics.clone(),
+        );
         Ok(SingleChainProviders {
             l1: l1_provider,
             blobs: blob_provider,
@@ -68,10 +77,14 @@ impl DerivationRequest {
         })
     }
 
-    fn http_provider<N: Network>(url: &str) -> RootProvider<N> {
+    fn http_provider<N: Network>(
+        url: &str,
+        cache: Cache,
+        metrics: Arc<Metrics>,
+    ) -> RootProvider<N> {
         let url = url.parse().unwrap();
         let transport = DefaultTransport::new(url);
-        let transport = LruProxy::new(200_000, transport);
+        let transport = LruProxy::new(cache, metrics, transport);
         let http = Http::new(transport);
         RootProvider::new(RpcClient::new(http, true))
     }

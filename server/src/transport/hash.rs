@@ -6,7 +6,7 @@ use tower::Service;
 
 use crate::transport::{Http, Transport};
 
-impl <T:Transport> Service<RequestPacket> for Http<T> {
+impl<T: Transport> Service<RequestPacket> for Http<T> {
     type Response = ResponsePacket;
     type Error = TransportError;
     type Future = TransportFut<'static>;
