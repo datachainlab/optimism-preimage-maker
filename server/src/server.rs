@@ -116,6 +116,6 @@ fn validate_request(payload: &Request) -> Result<(), &'static str> {
 async fn metrics(State(state): State<Arc<DerivationState>>) -> (StatusCode, Vec<u8>) {
     let hits = state.metrics.get_hits();
     let misses = state.metrics.get_misses();
-    let response = format!("cache: hits={}, misses={}", hits, misses);
+    let response = format!("cache: hits={}, misses={}\n", hits, misses);
     (StatusCode::OK, response.as_bytes().to_vec())
 }

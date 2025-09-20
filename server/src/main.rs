@@ -40,7 +40,7 @@ async fn main() -> anyhow::Result<()> {
         DerivationState {
             rollup_config: rollup_config.clone(),
             config: config.clone(),
-            cache: new_cache(200_000),
+            cache: new_cache(500_000),
             metrics: Arc::new(Metrics::new()),
             l2_chain_id: chain_id,
         },
