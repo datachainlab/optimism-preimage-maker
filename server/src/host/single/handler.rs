@@ -3,7 +3,7 @@
 use crate::host::single::config::Config;
 use crate::host::single::local_kv::LocalKeyValueStore;
 use crate::host::single::trace::{encode_to_bytes, TracingKeyValueStore};
-use crate::transport::lru::{Cache, LruProxy, Metrics};
+use crate::transport::cache::{Cache, LruProxy, Metrics};
 use crate::transport::{DefaultTransport, Http};
 use alloy_primitives::B256;
 use alloy_provider::RootProvider;

@@ -1,6 +1,6 @@
 use crate::host::single::config::Config;
 use crate::host::single::handler::DerivationRequest;
-use crate::transport::lru::{Cache, Metrics};
+use crate::transport::cache::{Cache, Metrics};
 use alloy_primitives::B256;
 use anyhow::{Context, Result};
 use axum::extract::State;
@@ -114,8 +114,9 @@ fn validate_request(payload: &Request) -> Result<(), &'static str> {
 }
 
 async fn metrics(State(state): State<Arc<DerivationState>>) -> (StatusCode, Vec<u8>) {
-    let hits = state.metrics.get_hits();
+    let total = state.metrics.get_requests();
     let misses = state.metrics.get_misses();
-    let response = format!("cache: hits={}, misses={}\n", hits, misses);
+    let hits = total - misses;
+    let response = format!("cache: total={}, hits={}, misses={}\n", total, hits, misses);
     (StatusCode::OK, response.as_bytes().to_vec())
 }

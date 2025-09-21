@@ -1,6 +1,6 @@
 pub mod hash;
 
-pub mod lru;
+pub mod cache;
 
 use alloy_json_rpc::{RequestPacket, ResponsePacket};
 use alloy_transport::{TransportError, TransportErrorKind, TransportResult};

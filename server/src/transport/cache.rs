@@ -3,20 +3,20 @@ use alloy_json_rpc::{RequestPacket, ResponsePacket};
 use alloy_transport::TransportResult;
 use axum::async_trait;
 use axum::http::HeaderMap;
-use lru::LruCache;
+use quick_cache::sync::Cache as QuickCache;
 use std::sync::atomic::AtomicU64;
-use std::sync::{Arc, Mutex};
+use std::sync::Arc;
 
-pub type Cache = Arc<Mutex<LruCache<String, ResponsePacket>>>;
+pub type Cache = Arc<QuickCache<String, ResponsePacket>>;
 
 pub fn new_cache(size: usize) -> Cache {
-    let cache = LruCache::new(std::num::NonZeroUsize::new(size).expect("N must be greater than 0"));
-    Arc::new(Mutex::new(cache))
+    let cache = QuickCache::new(size);
+    Arc::new(cache)
 }
 
 #[derive(Debug)]
 pub struct Metrics {
-    hits: AtomicU64,
+    requests: AtomicU64,
     misses: AtomicU64,
 }
 
@@ -29,12 +29,13 @@ impl Default for Metrics {
 impl Metrics {
     pub fn new() -> Self {
         Self {
-            hits: AtomicU64::new(0),
+            requests: AtomicU64::new(0),
             misses: AtomicU64::new(0),
         }
     }
-    pub fn hit(&self) {
-        self.hits.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+    pub fn request(&self) {
+        self.requests
+            .fetch_add(1, std::sync::atomic::Ordering::Relaxed);
     }
 
     pub fn miss(&self) {
@@ -42,8 +43,8 @@ impl Metrics {
             .fetch_add(1, std::sync::atomic::Ordering::Relaxed);
     }
 
-    pub fn get_hits(&self) -> u64 {
-        self.hits.load(std::sync::atomic::Ordering::Relaxed)
+    pub fn get_requests(&self) -> u64 {
+        self.requests.load(std::sync::atomic::Ordering::Relaxed)
     }
 
     pub fn get_misses(&self) -> u64 {
@@ -73,19 +74,14 @@ impl<T: Transport> Transport for LruProxy<T> {
     async fn post(self, req: RequestPacket, headers: HeaderMap) -> TransportResult<ResponsePacket> {
         if let Some(value) = headers.get("X-Request-Hash") {
             let hash = value.to_str().unwrap().to_string();
-            {
-                let mut cache = self.cache.lock().unwrap();
-                if let Some(v) = cache.get(&hash) {
-                    self.metrics.hit();
-                    return Ok(v.clone());
-                }
-            }
-            self.metrics.miss();
-            let result = self.inner.post(req, headers).await?;
-            {
-                let mut cache = self.cache.lock().unwrap();
-                cache.put(hash, result.clone());
-            }
+            let result = self
+                .cache
+                .get_or_insert_async(&hash, async {
+                    self.metrics.miss();
+                    self.inner.post(req, headers).await
+                })
+                .await?;
+            self.metrics.request();
             return Ok(result);
         };
         self.inner.post(req, headers).await
