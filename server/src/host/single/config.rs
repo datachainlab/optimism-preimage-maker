@@ -30,7 +30,8 @@ pub struct Config {
     /// look up the config in the superchain registry.
     #[clap(long, default_value = "0.0.0.0:10080")]
     pub http_server_addr: String,
-
+    /// The size of the rpc cache to be used by the application.
+    /// This value determines the maximum number of items that can be stored in the rpc cache.
     #[clap(long, default_value = "200000")]
     pub cache_size: usize,
 }

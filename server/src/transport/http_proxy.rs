@@ -43,6 +43,7 @@ impl HttpProxy {
             }
         };
 
+        self.metrics.request();
         let result = self
             .cache
             .get_or_insert_async(&hash, async {
@@ -50,7 +51,6 @@ impl HttpProxy {
                 self.inner.call(req).await
             })
             .await?;
-        self.metrics.request();
 
         Ok(result)
     }

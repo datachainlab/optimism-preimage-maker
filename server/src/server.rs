@@ -116,7 +116,7 @@ fn validate_request(payload: &Request) -> Result<(), &'static str> {
 
 #[derive(Clone, Debug, Serialize)]
 pub struct MetricsResponse {
-    pub cache_total: u64,
+    pub cache_hit: u64,
     pub cache_miss: u64,
 }
 
@@ -126,7 +126,11 @@ async fn metrics(State(state): State<Arc<DerivationState>>) -> (StatusCode, Json
     (
         StatusCode::OK,
         Json(MetricsResponse {
-            cache_total: total,
+            cache_hit: if total - misses > 0 {
+                total - misses
+            } else {
+                0
+            },
             cache_miss: misses,
         }),
     )
