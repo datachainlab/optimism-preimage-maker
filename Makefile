@@ -37,18 +37,6 @@ server-up:
 		--l1=http://localhost:$$L1_GETH_PORT \
 		--beacon=http://localhost:$$L1_BEACON_PORT
 
-.PHONY: server-up-via-cache
-server-up-via-cache:
-	@L2_ROLLUP_PORT=$$(jq -r '.l2RollupPort' hostPort.json);\
-	L2_GETH_PORT=$$(jq -r '.l2GethPort' hostPort.json);\
-	L1_GETH_PORT=$$(jq -r '.l1GethPort' hostPort.json);\
-	L1_BEACON_PORT=$$(jq -r '.l1BeaconPort' hostPort.json);\
-	cargo run --release --bin=optimism-preimage-maker -- \
-		--rollup=http://localhost:$$L2_ROLLUP_PORT \
-		--l2=http://localhost:8070 \
-		--l1=http://localhost:8090 \
-		--beacon=http://localhost:8080
-
 .PHONY: test
 test:
 	@L2_ROLLUP_PORT=$$(jq -r '.l2RollupPort' hostPort.json);\
@@ -59,14 +47,3 @@ test:
 devnet-down:
 	@ENCLAVE=$$(kurtosis enclave ls | awk 'NR==2 {print $$1}'); kurtosis enclave rm -f $$ENCLAVE
 	kurtosis engine stop
-
-.PHONY: cache
-cache:
-	@L2_ROLLUP_PORT=$$(jq -r '.l2RollupPort' hostPort.json);\
-    L2_GETH_PORT=$$(jq -r '.l2GethPort' hostPort.json);\
-    L1_GETH_PORT=$$(jq -r '.l1GethPort' hostPort.json);\
-    L1_BEACON_PORT=$$(jq -r '.l1BeaconPort' hostPort.json);\
-    scripts/template.sh $$L2_ROLLUP_PORT $$L2_GETH_PORT $${L1_BEACON_PORT} $$L1_GETH_PORT
-	cd cache/nginx && docker build -t nginx-cache .
-	docker run -p 8090:8090 -p 8080:8080 -p 8070:8070 --rm --name nginx-cache nginx-cache
-

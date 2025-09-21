@@ -3,11 +3,12 @@
 use crate::host::single::config::Config;
 use crate::host::single::local_kv::LocalKeyValueStore;
 use crate::host::single::trace::{encode_to_bytes, TracingKeyValueStore};
-use crate::transport::cache::{Cache, LruProxy, Metrics};
-use crate::transport::{DefaultTransport, Http};
+use crate::transport::http_proxy::{Cache, HttpProxy};
+use crate::transport::metrics::Metrics;
 use alloy_primitives::B256;
 use alloy_provider::RootProvider;
 use alloy_rpc_client::RpcClient;
+use alloy_transport_http::Http;
 use anyhow::Result;
 use kona_genesis::RollupConfig;
 use kona_host::single::{
@@ -22,6 +23,7 @@ use kona_proof::boot::L2_ROLLUP_CONFIG_KEY;
 use kona_proof::HintType;
 use kona_providers_alloy::{OnlineBeaconClient, OnlineBlobProvider};
 use op_alloy_network::{Network, Optimism};
+use reqwest::Client;
 use std::sync::Arc;
 use tokio::sync::RwLock;
 
@@ -81,9 +83,8 @@ impl DerivationRequest {
         metrics: Arc<Metrics>,
     ) -> RootProvider<N> {
         let url = url.parse().unwrap();
-        let transport = DefaultTransport::new(url);
-        let transport = LruProxy::new(cache, metrics, transport);
-        let http = Http::new(transport);
+        let http = Http::<Client>::new(url);
+        let http = HttpProxy::new(cache, metrics, http);
         RootProvider::new(RpcClient::new(http, true))
     }
 

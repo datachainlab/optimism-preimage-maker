@@ -30,4 +30,7 @@ pub struct Config {
     /// look up the config in the superchain registry.
     #[clap(long, default_value = "0.0.0.0:10080")]
     pub http_server_addr: String,
+
+    #[clap(long, default_value = "200000")]
+    pub cache_size: usize,
 }

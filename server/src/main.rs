@@ -1,6 +1,7 @@
 use crate::host::single::config::Config;
 use crate::server::{start_http_server_task, DerivationState};
-use crate::transport::cache::{new_cache, Metrics};
+use crate::transport::http_proxy::new_cache;
+use crate::transport::metrics::Metrics;
 use clap::Parser;
 use l2_client::L2Client;
 use std::sync::Arc;
@@ -40,7 +41,7 @@ async fn main() -> anyhow::Result<()> {
         DerivationState {
             rollup_config: rollup_config.clone(),
             config: config.clone(),
-            cache: new_cache(200_000),
+            cache: new_cache(config.cache_size),
             metrics: Arc::new(Metrics::new()),
             l2_chain_id: chain_id,
         },

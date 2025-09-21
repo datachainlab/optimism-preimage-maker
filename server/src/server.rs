@@ -1,6 +1,7 @@
 use crate::host::single::config::Config;
 use crate::host::single::handler::DerivationRequest;
-use crate::transport::cache::{Cache, Metrics};
+use crate::transport::http_proxy::Cache;
+use crate::transport::metrics::Metrics;
 use alloy_primitives::B256;
 use anyhow::{Context, Result};
 use axum::extract::State;
