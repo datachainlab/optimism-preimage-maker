@@ -29,7 +29,7 @@ use tokio::sync::RwLock;
 
 #[derive(Debug, Clone)]
 pub struct DerivationRequest {
-    pub cache: Cache,
+    pub cache: Option<Cache>,
     pub metrics: Arc<Metrics>,
     pub config: Config,
     pub rollup_config: RollupConfig,
@@ -79,12 +79,15 @@ impl DerivationRequest {
 
     fn http_provider<N: Network>(
         url: &str,
-        cache: Cache,
+        cache: Option<Cache>,
         metrics: Arc<Metrics>,
     ) -> RootProvider<N> {
         let url = url.parse().unwrap();
         let http = Http::<Client>::new(url);
-        let http = HttpProxy::new(cache, metrics, http);
+        if let Some(cache) = cache {
+            let http = HttpProxy::new(cache, metrics, http);
+            return RootProvider::new(RpcClient::new(http, true));
+        }
         RootProvider::new(RpcClient::new(http, true))
     }
 

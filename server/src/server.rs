@@ -20,7 +20,7 @@ pub struct DerivationState {
     pub rollup_config: RollupConfig,
     pub config: Config,
     pub l2_chain_id: u64,
-    pub cache: Cache,
+    pub cache: Option<Cache>,
     pub metrics: Arc<Metrics>,
 }
 

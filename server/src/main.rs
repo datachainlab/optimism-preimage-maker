@@ -27,6 +27,13 @@ async fn main() -> anyhow::Result<()> {
         .with(filter)
         .init();
     info!("start optimism preimage-maker");
+    let cache = if config.cache_size > 0 {
+        info!("enable rpc cache with size {}", config.cache_size);
+        Some(new_cache(config.cache_size))
+    } else {
+        info!("disable rpc cache with size");
+        None
+    };
 
     let l2_client = L2Client::new(
         config.l2_rollup_address.to_string(),
@@ -41,7 +48,7 @@ async fn main() -> anyhow::Result<()> {
         DerivationState {
             rollup_config: rollup_config.clone(),
             config: config.clone(),
-            cache: new_cache(config.cache_size),
+            cache,
             metrics: Arc::new(Metrics::new()),
             l2_chain_id: chain_id,
         },
