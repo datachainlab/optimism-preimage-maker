@@ -47,4 +47,3 @@ test:
 devnet-down:
 	@ENCLAVE=$$(kurtosis enclave ls | awk 'NR==2 {print $$1}'); kurtosis enclave rm -f $$ENCLAVE
 	kurtosis engine stop
-

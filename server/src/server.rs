@@ -1,10 +1,12 @@
 use crate::host::single::config::Config;
 use crate::host::single::handler::DerivationRequest;
+use crate::transport::http_proxy::Cache;
+use crate::transport::metrics::Metrics;
 use alloy_primitives::B256;
 use anyhow::{Context, Result};
 use axum::extract::State;
 use axum::http::StatusCode;
-use axum::routing::post;
+use axum::routing::{get, post};
 use axum::Json;
 use kona_genesis::RollupConfig;
 use serde::{Deserialize, Serialize};
@@ -18,11 +20,14 @@ pub struct DerivationState {
     pub rollup_config: RollupConfig,
     pub config: Config,
     pub l2_chain_id: u64,
+    pub cache: Option<Cache>,
+    pub metrics: Arc<Metrics>,
 }
 
 async fn start_http_server(addr: &str, derivation_state: DerivationState) -> Result<()> {
     let app = axum::Router::new()
         .route("/derivation", post(derivation))
+        .route("/metrics", get(metrics))
         .with_state(Arc::new(derivation_state));
 
     let listener = TcpListener::bind(addr).await?;
@@ -61,6 +66,8 @@ async fn derivation(
     }
 
     let derivation = DerivationRequest {
+        cache: state.cache.clone(),
+        metrics: state.metrics.clone(),
         config: state.config.clone(),
         rollup_config: state.rollup_config.clone(),
         l2_chain_id: state.l2_chain_id,
@@ -105,4 +112,26 @@ fn validate_request(payload: &Request) -> Result<(), &'static str> {
         return Err("invalid l2_block_number");
     }
     Ok(())
+}
+
+#[derive(Clone, Debug, Serialize)]
+pub struct MetricsResponse {
+    pub cache_hit: u64,
+    pub cache_miss: u64,
+}
+
+async fn metrics(State(state): State<Arc<DerivationState>>) -> (StatusCode, Json<MetricsResponse>) {
+    let total = state.metrics.get_requests();
+    let misses = state.metrics.get_misses();
+    (
+        StatusCode::OK,
+        Json(MetricsResponse {
+            cache_hit: if total - misses > 0 {
+                total - misses
+            } else {
+                0
+            },
+            cache_miss: misses,
+        }),
+    )
 }

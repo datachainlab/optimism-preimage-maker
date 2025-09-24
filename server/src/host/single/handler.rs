@@ -3,10 +3,17 @@
 use crate::host::single::config::Config;
 use crate::host::single::local_kv::LocalKeyValueStore;
 use crate::host::single::trace::{encode_to_bytes, TracingKeyValueStore};
+use crate::transport::http_proxy::{Cache, HttpProxy};
+use crate::transport::metrics::Metrics;
 use alloy_primitives::B256;
+use alloy_provider::RootProvider;
+use alloy_rpc_client::RpcClient;
+use alloy_transport_http::Http;
 use anyhow::Result;
 use kona_genesis::RollupConfig;
-use kona_host::single::{SingleChainHintHandler, SingleChainHost};
+use kona_host::single::{
+    SingleChainHintHandler, SingleChainHost, SingleChainHostError, SingleChainProviders,
+};
 use kona_host::{MemoryKeyValueStore, OnlineHostBackend, PreimageServer, SplitKeyValueStore};
 use kona_preimage::{
     BidirectionalChannel, HintReader, HintWriter, NativeChannel, OracleReader, OracleServer,
@@ -14,11 +21,16 @@ use kona_preimage::{
 };
 use kona_proof::boot::L2_ROLLUP_CONFIG_KEY;
 use kona_proof::HintType;
+use kona_providers_alloy::{OnlineBeaconClient, OnlineBlobProvider};
+use op_alloy_network::{Network, Optimism};
+use reqwest::Client;
 use std::sync::Arc;
 use tokio::sync::RwLock;
 
 #[derive(Debug, Clone)]
 pub struct DerivationRequest {
+    pub cache: Option<Cache>,
+    pub metrics: Arc<Metrics>,
     pub config: Config,
     pub rollup_config: RollupConfig,
     pub l2_chain_id: u64,
@@ -40,6 +52,43 @@ impl DerivationRequest {
         Ok(Arc::new(RwLock::new(TracingKeyValueStore::new(Box::new(
             split_kv_store,
         )))))
+    }
+
+    /// Creates the providers required for the host backend.
+    async fn create_providers(&self) -> Result<SingleChainProviders, SingleChainHostError> {
+        let l1_provider = Self::http_provider(
+            &self.config.l1_node_address,
+            self.cache.clone(),
+            self.metrics.clone(),
+        );
+        let blob_provider = OnlineBlobProvider::init(OnlineBeaconClient::new_http(
+            self.config.l1_beacon_address.clone(),
+        ))
+        .await;
+        let l2_provider = Self::http_provider::<Optimism>(
+            &self.config.l2_node_address,
+            self.cache.clone(),
+            self.metrics.clone(),
+        );
+        Ok(SingleChainProviders {
+            l1: l1_provider,
+            blobs: blob_provider,
+            l2: l2_provider,
+        })
+    }
+
+    fn http_provider<N: Network>(
+        url: &str,
+        cache: Option<Cache>,
+        metrics: Arc<Metrics>,
+    ) -> RootProvider<N> {
+        let url = url.parse().unwrap();
+        let http = Http::<Client>::new(url);
+        if let Some(cache) = cache {
+            let http = HttpProxy::new(cache, metrics, http);
+            return RootProvider::new(RpcClient::new(http, true));
+        }
+        RootProvider::new(RpcClient::new(http, true))
     }
 
     async fn run_server(
@@ -86,7 +135,7 @@ impl DerivationRequest {
             claimed_l2_block_number: self.l2_block_number,
             ..Default::default()
         };
-        let providers = cfg.create_providers().await?;
+        let providers = self.create_providers().await?;
         let backend =
             OnlineHostBackend::new(cfg, kv_store.clone(), providers, SingleChainHintHandler)
                 .with_proactive_hint(HintType::L2PayloadWitness);
