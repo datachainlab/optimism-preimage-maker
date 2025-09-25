@@ -6,7 +6,7 @@ chain:
 	$(SED) -i 's/teku/lodestar\n      cl_image: chainsafe\/lodestar:v1.34.0\n      vc_image: chainsafe\/lodestar:v1.34.0/g' chain/kurtosis-devnet/simple.yaml
 	$(SED) -i 's/minimal/minimal\n    electra_fork_epoch: 0/g' chain/kurtosis-devnet/simple.yaml
 	# change ethereum-packages
-	$(SED) -i 's/83830d44823767af65eda7dfe6b26c87c536c4cf/5001427aa3acf8411f6286a6772ab591996f8df3/g' chain/kurtosis-devnet/optimism-package-trampoline/kurtosis.yml
+	$(SED) -i 's/83830d44823767af65eda7dfe6b26c87c536c4cf/95b059294110c02613897fd9d3458ce350874bb3/g' chain/kurtosis-devnet/optimism-package-trampoline/kurtosis.yml
 
 .PHONY: devnet-up
 devnet-up:
