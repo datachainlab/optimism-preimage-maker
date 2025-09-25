@@ -3,7 +3,7 @@ SED = $(shell which gsed 2>/dev/null || echo sed)
 .PHONY: chain
 chain:
 	git clone --depth 1 -b v1.13.4 https://github.com/ethereum-optimism/optimism ./chain
-	$(SED) -i 's/teku/lodestar\n      cl_image: chainsafe\/lodestar:v1.34.0\n      vc_image: chainsafe\/lodestar:v1.34.0/g' chain/kurtosis-devnet/simple.yaml
+	$(SED) -i 's/teku/lodestar\n      cl_image: ethpandaops\/lodestar:fusaka-devnet-5-5e2a800\n      vc_image: ethpandaops\/lodestar:fusaka-devnet-5-5e2a800/g' chain/kurtosis-devnet/simple.yaml
 	$(SED) -i 's/minimal/minimal\n    electra_fork_epoch: 0/g' chain/kurtosis-devnet/simple.yaml
 	# change ethereum-packages
 	$(SED) -i 's/83830d44823767af65eda7dfe6b26c87c536c4cf/95b059294110c02613897fd9d3458ce350874bb3/g' chain/kurtosis-devnet/optimism-package-trampoline/kurtosis.yml
