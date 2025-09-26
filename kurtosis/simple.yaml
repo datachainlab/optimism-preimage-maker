@@ -73,10 +73,9 @@ optimism_package:
 ethereum_package:
   participants:
     - el_type: geth
-      #el_image: ethpandaops/geth:master-0977a02
       cl_type: lodestar
-      cl_image: yoshidan/lodestar:f38ba0da1c946407687a9636c5168422eb024e9a
-      vc_image: yoshidan/lodestar:f38ba0da1c946407687a9636c5168422eb024e9a
+      cl_image: ghcr.io/yoshidan/lodestar:daacae61b03f17fca0c963d65ab37d8c01bb3c82
+      vc_image: ghcr.io/yoshidan/lodestar:daacae61b03f17fca0c963d65ab37d8c01bb3c82
       supernode: true
   network_params:
     preset: minimal
