@@ -43,6 +43,7 @@ optimism_package:
         fjord_time_offset: 0
         granite_time_offset: 0
         holocene_time_offset: 0
+        isthmus_time_offset: 0
         fund_dev_accounts: true
       batcher_params:
         image: {{ localDockerImage "op-batcher" }}
@@ -72,10 +73,10 @@ optimism_package:
 ethereum_package:
   participants:
     - el_type: geth
-      el_image: ethpandaops/geth:master-6492751
+      #el_image: ethpandaops/geth:master-0977a02
       cl_type: lodestar
-      cl_image: ethpandaops/lodestar:fusaka-devnet-5-5e2a800
-      vc_image: ethpandaops/lodestar:fusaka-devnet-5-5e2a800
+      cl_image: yoshidan/lodestar:f38ba0da1c946407687a9636c5168422eb024e9a
+      vc_image: yoshidan/lodestar:f38ba0da1c946407687a9636c5168422eb024e9a
       supernode: true
   network_params:
     preset: minimal

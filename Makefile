@@ -1,8 +1,14 @@
+SED = $(shell which gsed 2>/dev/null || echo sed)
+
 .PHONY: chain
 chain:
 	git clone --depth 1 -b v1.13.6 https://github.com/ethereum-optimism/optimism ./chain
 	cp kurtosis/kurtosis.yaml ./chain/kurtosis-devnet/optimism-package-trampoline/kurtosis.yml
+	cp kurtosis/main.star ./chain/kurtosis-devnet/optimism-package-trampoline/main.star
 	cp kurtosis/simple.yaml ./chain/kurtosis-devnet/simple.yaml
+	$(SED) -i 's/v1.8.2-0.20250602144112-2b7d06430e48/v1.11.1/g' ./chain/go.mod
+	cd chain && go mod tidy
+
 
 .PHONY: devnet-up
 devnet-up:
