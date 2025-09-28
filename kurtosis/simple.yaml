@@ -79,8 +79,13 @@ ethereum_package:
       supernode: true
   network_params:
     preset: minimal
-    electra_fork_epoch: 0
     fulu_fork_epoch: 5
+    bpo_1_epoch: 6
+    bpo_1_max_blobs: 15
+    bpo_1_target_blobs: 10
+    bpo_2_epoch: 7
+    bpo_2_max_blobs: 21
+    bpo_2_target_blobs: 14
     genesis_delay: 5
     additional_preloaded_contracts: |
       {
