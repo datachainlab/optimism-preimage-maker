@@ -1331,7 +1331,7 @@ dependencies = [
  "bitflags",
  "cexpr",
  "clang-sys",
- "itertools 0.13.0",
+ "itertools 0.12.1",
  "proc-macro2",
  "quote",
  "regex",
@@ -1349,7 +1349,7 @@ dependencies = [
  "bitflags",
  "cexpr",
  "clang-sys",
- "itertools 0.13.0",
+ "itertools 0.12.1",
  "proc-macro2",
  "quote",
  "regex",
@@ -4067,7 +4067,7 @@ dependencies = [
 [[package]]
 name = "optimism-derivation"
 version = "0.1.1"
-source = "git+https://github.com/datachainlab/optimism-elc?branch=kona-node-v1.0.1#0f44501e650b2cfff34ecee268201c1cbf90d64c"
+source = "git+https://github.com/datachainlab/optimism-elc?rev=fbb2f247b9460fc409ece65b14527fa5bb463155#fbb2f247b9460fc409ece65b14527fa5bb463155"
 dependencies = [
  "alloy-consensus",
  "alloy-eips",
