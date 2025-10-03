@@ -167,7 +167,7 @@ impl L2Client {
         let client = reqwest::Client::new();
         let body = RpcRequest {
             method: "optimism_outputAtBlock".into(),
-            params: vec![format!("0x{:X}", number).into()],
+            params: vec![format!("0x{number:X}").into()],
             ..Default::default()
         };
         let response = client
@@ -185,7 +185,7 @@ impl L2Client {
         let client = reqwest::Client::new();
         let body = RpcRequest {
             method: "eth_getBlockByNumber".into(),
-            params: vec![format!("0x{:X}", number).into(), false.into()],
+            params: vec![format!("0x{number:X}").into(), false.into()],
             ..Default::default()
         };
         let response = client
