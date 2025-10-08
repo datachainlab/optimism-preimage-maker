@@ -7,12 +7,12 @@ use alloy_primitives::B256;
 use anyhow::Result;
 use kona_genesis::RollupConfig;
 use kona_host::single::{SingleChainHintHandler, SingleChainHost};
-use kona_host::{MemoryKeyValueStore, OnlineHostBackend, PreimageServer, SplitKeyValueStore};
+use kona_host::{KeyValueStore, MemoryKeyValueStore, OnlineHostBackend, PreimageServer, SplitKeyValueStore};
 use kona_preimage::{
     BidirectionalChannel, HintReader, HintWriter, NativeChannel, OracleReader, OracleServer,
     PreimageKey,
 };
-use kona_proof::boot::L2_ROLLUP_CONFIG_KEY;
+use kona_proof::boot::{L1_CONFIG_KEY, L2_ROLLUP_CONFIG_KEY};
 use kona_proof::HintType;
 use std::sync::Arc;
 use tokio::sync::RwLock;
@@ -95,14 +95,22 @@ impl DerivationRequest {
         let client_task = self.run_client(preimage.client, hint.client);
         tokio::try_join!(server_task, client_task)?;
 
+
+
         // Collect preimages from the kv store
-        let mut used = {
+        let (mut used, l1_config) = {
             let mut lock = kv_store.write().await;
-            std::mem::take(&mut lock.used)
+            let l1_config = lock.get(PreimageKey::new_local(L1_CONFIG_KEY.to()).into()).unwrap();
+            (std::mem::take(&mut lock.used), l1_config)
         };
         let local_key = PreimageKey::new_local(L2_ROLLUP_CONFIG_KEY.to());
         let roll_up_config_json = serde_json::to_vec(&self.rollup_config)?;
         used.insert(local_key, roll_up_config_json);
+        used.insert(
+            PreimageKey::new_local(L1_CONFIG_KEY.to()),
+            l1_config,
+        );
+
 
         let entry_size = used.len();
         let preimage = encode_to_bytes(used);

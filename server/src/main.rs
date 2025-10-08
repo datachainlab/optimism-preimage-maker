@@ -17,7 +17,7 @@ async fn main() -> anyhow::Result<()> {
 
     // start tracing
     let filter = filter::EnvFilter::from_default_env()
-        .add_directive("trace".parse()?);
+        .add_directive("info".parse()?);
     tracing_subscriber::registry()
         .with(tracing_subscriber::fmt::layer())
         .with(filter)
