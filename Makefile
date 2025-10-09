@@ -20,6 +20,7 @@ devnet-up:
 .PHONY: set-port
 set-port:
 	scripts/port.sh
+	scripts/get_l1_config.sh
 
 .PHONY: status
 status:
@@ -63,7 +64,4 @@ sync-lock:
 	# Downgrade the crate that does not exist in op-rs, which was unnecessarily upgraded by cargo update.
 	cargo build
 
-PHONY: get-l1-config
-get-l1-config:
-	scripts/get_l1_config.sh
 

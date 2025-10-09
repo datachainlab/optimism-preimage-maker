@@ -12,7 +12,6 @@ Preimage maker for optimism
 make chain
 make devnet-up
 make set-port
-make get-l1-config
 make wait
 ```
 
