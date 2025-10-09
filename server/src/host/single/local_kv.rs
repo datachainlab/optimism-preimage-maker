@@ -40,8 +40,13 @@ impl KeyValueStore for LocalKeyValueStore {
             }
             L1_CONFIG_KEY => {
                 let l1_chain_config = self.cfg.l1_chain_config.clone();
-                let serialized = serde_json::to_vec(&l1_chain_config).ok()?;
-                Some(serialized)
+                match l1_chain_config {
+                    None => None,
+                    Some(l1_chain_config) => {
+                        let serialized = serde_json::to_vec(&l1_chain_config).ok()?;
+                        Some(serialized)
+                    }
+                }
             }
             _ => None,
         }
