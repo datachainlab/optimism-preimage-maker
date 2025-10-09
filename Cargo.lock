@@ -1350,7 +1350,7 @@ dependencies = [
  "bitflags",
  "cexpr",
  "clang-sys",
- "itertools 0.13.0",
+ "itertools 0.12.1",
  "proc-macro2",
  "quote",
  "regex",
@@ -1368,7 +1368,7 @@ dependencies = [
  "bitflags",
  "cexpr",
  "clang-sys",
- "itertools 0.13.0",
+ "itertools 0.12.1",
  "proc-macro2",
  "quote",
  "regex",
@@ -4092,7 +4092,7 @@ dependencies = [
 [[package]]
 name = "optimism-derivation"
 version = "0.1.1"
-source = "git+https://github.com/datachainlab/optimism-elc?rev=2479a280cf08acf4e496bd3123cb2b5951c81e81#2479a280cf08acf4e496bd3123cb2b5951c81e81"
+source = "git+https://github.com/datachainlab/optimism-elc?rev=ddadadf874869c4979635df7a7e473d2cf23c066#ddadadf874869c4979635df7a7e473d2cf23c066"
 dependencies = [
  "alloy-consensus",
  "alloy-eips",
