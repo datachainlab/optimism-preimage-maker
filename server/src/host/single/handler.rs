@@ -5,7 +5,7 @@ use crate::host::single::local_kv::LocalKeyValueStore;
 use crate::host::single::trace::{encode_to_bytes, TracingKeyValueStore};
 use alloy_primitives::B256;
 use anyhow::Result;
-use kona_genesis::RollupConfig;
+use kona_genesis::{L1ChainConfig, RollupConfig};
 use kona_host::single::{SingleChainHintHandler, SingleChainHost};
 use kona_host::{KeyValueStore, MemoryKeyValueStore, OnlineHostBackend, PreimageServer, SplitKeyValueStore};
 use kona_preimage::{
@@ -28,6 +28,8 @@ pub struct DerivationRequest {
     pub l1_head_hash: B256,
     pub l2_output_root: B256,
     pub l2_block_number: u64,
+    /// L1 chain config, only required in devnet
+    pub l1_chain_config: Option<L1ChainConfig>,
 }
 
 impl DerivationRequest {
@@ -95,22 +97,21 @@ impl DerivationRequest {
         let client_task = self.run_client(preimage.client, hint.client);
         tokio::try_join!(server_task, client_task)?;
 
-
-
         // Collect preimages from the kv store
-        let (mut used, l1_config) = {
+        let mut used= {
             let mut lock = kv_store.write().await;
-            let l1_config = lock.get(PreimageKey::new_local(L1_CONFIG_KEY.to()).into()).unwrap();
-            (std::mem::take(&mut lock.used), l1_config)
+            std::mem::take(&mut lock.used)
         };
         let local_key = PreimageKey::new_local(L2_ROLLUP_CONFIG_KEY.to());
         let roll_up_config_json = serde_json::to_vec(&self.rollup_config)?;
         used.insert(local_key, roll_up_config_json);
-        used.insert(
-            PreimageKey::new_local(L1_CONFIG_KEY.to()),
-            l1_config,
-        );
 
+        // In devnet, we need to provide L1 chain config preimage
+        if let Some(l1_chain_config) = &self.l1_chain_config {
+            let local_key = PreimageKey::new_local(L1_CONFIG_KEY.to());
+            let l1_chain_config_json = serde_json::to_vec(l1_chain_config)?;
+            used.insert(local_key, l1_chain_config_json);
+        }
 
         let entry_size = used.len();
         let preimage = encode_to_bytes(used);

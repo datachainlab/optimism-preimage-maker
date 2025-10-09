@@ -20,6 +20,7 @@ func L1ChainConfigByChainID(chainID ChainID) *params.ChainConfig {
 	case ChainIDFromBig(params.HoodiChainConfig.ChainID):
 		return params.HoodiChainConfig
 	default:
+        // For devnet setting. It is required to match simple.yaml
 		return &params.ChainConfig{
 			ChainID:                 big.NewInt(3151908),
 			HomesteadBlock:          big.NewInt(0),
@@ -42,11 +43,15 @@ func L1ChainConfigByChainID(chainID ChainID) *params.ChainConfig {
 			CancunTime:              newUint64(0),
 			PragueTime:              newUint64(0),
 			OsakaTime:               newUint64(0),
+			BPO1Time:                newUint64(0),
+			BPO2Time:                newUint64(0),
 			DepositContractAddress:  common.HexToAddress("0x00000000219ab540356cbb839cbe05303d7705fa"),
 			BlobScheduleConfig: &params.BlobScheduleConfig{
 				Cancun: params.DefaultCancunBlobConfig,
 				Prague: params.DefaultPragueBlobConfig,
 				Osaka:  params.DefaultOsakaBlobConfig,
+				BPO1:   params.DefaultBPO1BlobConfig,
+				BPO2:   params.DefaultBPO2BlobConfig,
 			},
 		}
 	}

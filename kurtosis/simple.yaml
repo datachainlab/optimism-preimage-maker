@@ -76,18 +76,18 @@ ethereum_package:
   participants:
     - el_type: geth
       cl_type: lodestar
-      cl_image: chainsafe/lodestar:v1.35.0-rc.3
-      vc_image: chainsafe/lodestar:v1.35.0-rc.3
+      cl_image: chainsafe/lodestar:v1.35.0-rc.4
+      vc_image: chainsafe/lodestar:v1.35.0-rc.4
       supernode: true
   network_params:
     preset: minimal
     fulu_fork_epoch: 0
-    #bpo_1_epoch: 6
-    #bpo_1_max_blobs: 15
-    #bpo_1_target_blobs: 10
-    #bpo_2_epoch: 7
-    #bpo_2_max_blobs: 21
-    #bpo_2_target_blobs: 14
+    bpo_1_epoch: 0
+    bpo_1_max_blobs: 15
+    bpo_1_target_blobs: 10
+    bpo_2_epoch: 0
+    bpo_2_max_blobs: 21
+    bpo_2_target_blobs: 14
     genesis_delay: 5
     additional_preloaded_contracts: |
       {
