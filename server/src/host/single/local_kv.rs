@@ -44,7 +44,7 @@ impl KeyValueStore for LocalKeyValueStore {
                     None => {
                         tracing::error!("L1 chain config is not provided in derivation request");
                         None
-                    },
+                    }
                     Some(l1_chain_config) => {
                         let serialized = serde_json::to_vec(&l1_chain_config).ok()?;
                         Some(serialized)
