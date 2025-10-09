@@ -59,7 +59,7 @@ jobs:
           make set-port
           make get-l1-config
       - name: Start preimage server
-        run: make server-up &
+        run: make server-up
       - name: Wait for chain to get ready
         run: make wait
       - name: Test
