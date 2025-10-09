@@ -38,10 +38,17 @@ jobs:
           submodules: recursive
           fetch-depth: 0
       - uses: actions-rust-lang/setup-rust-toolchain@v1
-      - uses: Swatinem/rust-cache@v2
       - uses: extractions/setup-just@v2
         with:
           just-version: 1.40.0
+      - name: Clean up unnecessary packages
+        run: |
+          sudo rm -rf "/opt/ghc" || true
+          sudo rm -rf "/usr/share/dotnet" || true
+          sudo rm -rf "$AGENT_TOOLSDIRECTORY" || true
+          sudo rm -rf "/usr/local/lib/android" || true
+          sudo rm -rf "/usr/local/share/boost" || true
+          docker system prune -a --volumes -f
       - name: Install Foundry
         uses: foundry-rs/foundry-toolchain@v1
       - name: Install kurtosis
@@ -51,7 +58,6 @@ jobs:
           sudo apt update
           sudo apt remove kurtosis-cli
           sudo apt install kurtosis-cli=1.11.1 -V
-          docker system prune
       - name: Prepare optimism
         run: make chain
       - name: Start optimism
