@@ -36,7 +36,7 @@ server-up:
 	L2_GETH_PORT=$$(jq -r '.l2GethPort' hostPort.json);\
 	L1_GETH_PORT=$$(jq -r '.l1GethPort' hostPort.json);\
 	L1_BEACON_PORT=$$(jq -r '.l1BeaconPort' hostPort.json);\
-	L1_CHAIN_CONFIG=$$(cat l1_chain_config.json | base64);\
+	L1_CHAIN_CONFIG=$$(cat l1_chain_config.json | base64 -w 0);\
 	cargo run --release --bin=optimism-preimage-maker -- \
 		--rollup=http://localhost:$$L2_ROLLUP_PORT \
 		--l2=http://localhost:$$L2_GETH_PORT \
