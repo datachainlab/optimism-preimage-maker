@@ -27,7 +27,7 @@ kona-genesis = { workspace = true, features = ["std", "serde"] }
 alloy-primitives = { workspace = true, features = ["map", "serde"] }
 
 # optimism derivation
-optimism-derivation = { git = "https://github.com/datachainlab/optimism-elc", rev = "ddadadf874869c4979635df7a7e473d2cf23c066", default-features = false }
+optimism-derivation = { git = "https://github.com/datachainlab/optimism-elc", rev = "e716fb894b2e811a016674b12b546b37f510fdb8", default-features = false }
 base64 = "0.22.1"
 
 [dev-dependencies]
