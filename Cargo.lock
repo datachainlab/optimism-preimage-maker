@@ -4121,8 +4121,6 @@ dependencies = [
 name = "optimism-preimage-maker"
 version = "0.1.3"
 dependencies = [
- "alloy-eips",
- "alloy-hardforks",
  "alloy-primitives",
  "anyhow",
  "axum",

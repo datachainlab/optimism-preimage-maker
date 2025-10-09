@@ -76,8 +76,8 @@ ethereum_package:
   participants:
     - el_type: geth
       cl_type: lodestar
-      cl_image: chainsafe/lodestar:v1.35.0-rc.4
-      vc_image: chainsafe/lodestar:v1.35.0-rc.4
+      cl_image: chainsafe/lodestar:v1.35.0
+      vc_image: chainsafe/lodestar:v1.35.0
       supernode: true
   network_params:
     preset: minimal
