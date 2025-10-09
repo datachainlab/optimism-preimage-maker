@@ -6,7 +6,6 @@ use std::collections::BTreeMap;
 use crate::host::single::handler::DerivationRequest;
 use alloy_primitives::{B256, U256};
 use anyhow::Result;
-use clap::builder::TypedValueParser;
 use kona_genesis::L1ChainConfig;
 use kona_host::KeyValueStore;
 use kona_preimage::PreimageKey;

@@ -29,8 +29,7 @@ alloy-eips = { workspace = true, features = ["serde"] }
 alloy-hardforks = { workspace = true }
 
 # optimism derivation
-#optimism-derivation = { git = "https://github.com/datachainlab/optimism-elc", rev = "a4f8b97b91b21daa53defe52cea4530d36f89d52", default-features = false }
-optimism-derivation = { path="../../optimism-elc/derivation", default-features = false }
+optimism-derivation = { git = "https://github.com/datachainlab/optimism-elc", rev = "2479a280cf08acf4e496bd3123cb2b5951c81e81", default-features = false }
 
 [dev-dependencies]
 prost = "0.11.9"

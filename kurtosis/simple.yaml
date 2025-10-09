@@ -47,7 +47,9 @@ optimism_package:
         fund_dev_accounts: true
       batcher_params:
         image: {{ localDockerImage "op-batcher" }}
-        extra_params: []
+        extra_params: [
+          "--txmgr.enable-cell-proofs=true"
+        ]
       proposer_params:
         image: {{ localDockerImage "op-proposer" }}
         extra_params: []
@@ -79,13 +81,13 @@ ethereum_package:
       supernode: true
   network_params:
     preset: minimal
-    fulu_fork_epoch: 5
-    bpo_1_epoch: 6
-    bpo_1_max_blobs: 15
-    bpo_1_target_blobs: 10
-    bpo_2_epoch: 7
-    bpo_2_max_blobs: 21
-    bpo_2_target_blobs: 14
+    fulu_fork_epoch: 0
+    #bpo_1_epoch: 6
+    #bpo_1_max_blobs: 15
+    #bpo_1_target_blobs: 10
+    #bpo_2_epoch: 7
+    #bpo_2_max_blobs: 21
+    #bpo_2_target_blobs: 14
     genesis_delay: 5
     additional_preloaded_contracts: |
       {
