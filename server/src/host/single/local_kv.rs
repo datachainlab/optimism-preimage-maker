@@ -41,7 +41,10 @@ impl KeyValueStore for LocalKeyValueStore {
             L1_CONFIG_KEY => {
                 let l1_chain_config = self.cfg.l1_chain_config.clone();
                 match l1_chain_config {
-                    None => None,
+                    None => {
+                        tracing::error!("L1 chain config is not provided in derivation request");
+                        None
+                    },
                     Some(l1_chain_config) => {
                         let serialized = serde_json::to_vec(&l1_chain_config).ok()?;
                         Some(serialized)
