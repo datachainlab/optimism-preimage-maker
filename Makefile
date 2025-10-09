@@ -36,11 +36,13 @@ server-up:
 	L2_GETH_PORT=$$(jq -r '.l2GethPort' hostPort.json);\
 	L1_GETH_PORT=$$(jq -r '.l1GethPort' hostPort.json);\
 	L1_BEACON_PORT=$$(jq -r '.l1BeaconPort' hostPort.json);\
+	L1_CHAIN_CONFIG=$$(cat l1_chain_config.json | base64);\
 	cargo run --release --bin=optimism-preimage-maker -- \
 		--rollup=http://localhost:$$L2_ROLLUP_PORT \
 		--l2=http://localhost:$$L2_GETH_PORT \
 		--l1=http://localhost:$$L1_GETH_PORT \
-		--beacon=http://localhost:$$L1_BEACON_PORT
+		--beacon=http://localhost:$$L1_BEACON_PORT \
+		--l1-chain-config=$$L1_CHAIN_CONFIG
 
 .PHONY: test
 test:
@@ -60,3 +62,8 @@ sync-lock:
 	# Check build
 	# Downgrade the crate that does not exist in op-rs, which was unnecessarily upgraded by cargo update.
 	cargo build
+
+PHONY: get-l1-config
+get-l1-config:
+	scripts/get_l1_config.sh
+

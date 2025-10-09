@@ -25,11 +25,10 @@ kona-genesis = { workspace = true, features = ["std", "serde"] }
 
 # Alloy
 alloy-primitives = { workspace = true, features = ["map", "serde"] }
-alloy-eips = { workspace = true, features = ["serde"] }
-alloy-hardforks = { workspace = true }
 
 # optimism derivation
 optimism-derivation = { git = "https://github.com/datachainlab/optimism-elc", rev = "2479a280cf08acf4e496bd3123cb2b5951c81e81", default-features = false }
+base64 = "0.22.1"
 
 [dev-dependencies]
 prost = "0.11.9"

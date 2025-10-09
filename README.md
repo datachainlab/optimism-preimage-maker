@@ -2,7 +2,7 @@
 Preimage maker for optimism
 
 ## Prerequisites
-* [kurtosis-cli v1.8.1](https://docs.kurtosis.com/install-historical/)
+* [kurtosis-cli v1.11.1](https://docs.kurtosis.com/install-historical/)
 * [just](https://github.com/casey/just)
 
 ## Quickstart
@@ -12,6 +12,7 @@ Preimage maker for optimism
 make chain
 make devnet-up
 make set-port
+make get-l1-config
 make wait
 ```
 

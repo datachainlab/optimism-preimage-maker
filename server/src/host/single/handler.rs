@@ -7,7 +7,7 @@ use alloy_primitives::B256;
 use anyhow::Result;
 use kona_genesis::{L1ChainConfig, RollupConfig};
 use kona_host::single::{SingleChainHintHandler, SingleChainHost};
-use kona_host::{KeyValueStore, MemoryKeyValueStore, OnlineHostBackend, PreimageServer, SplitKeyValueStore};
+use kona_host::{MemoryKeyValueStore, OnlineHostBackend, PreimageServer, SplitKeyValueStore};
 use kona_preimage::{
     BidirectionalChannel, HintReader, HintWriter, NativeChannel, OracleReader, OracleServer,
     PreimageKey,
@@ -98,7 +98,7 @@ impl DerivationRequest {
         tokio::try_join!(server_task, client_task)?;
 
         // Collect preimages from the kv store
-        let mut used= {
+        let mut used = {
             let mut lock = kv_store.write().await;
             std::mem::take(&mut lock.used)
         };

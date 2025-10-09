@@ -6,7 +6,7 @@ use axum::extract::State;
 use axum::http::StatusCode;
 use axum::routing::post;
 use axum::Json;
-use kona_genesis::RollupConfig;
+use kona_genesis::{L1ChainConfig, RollupConfig};
 use serde::{Deserialize, Serialize};
 use std::fmt::Debug;
 use std::sync::Arc;
@@ -16,6 +16,7 @@ use tracing::{error, info};
 
 pub struct DerivationState {
     pub rollup_config: RollupConfig,
+    pub l1_chain_config: Option<L1ChainConfig>,
     pub config: Config,
     pub l2_chain_id: u64,
 }
@@ -63,6 +64,7 @@ async fn derivation(
     let derivation = DerivationRequest {
         config: state.config.clone(),
         rollup_config: state.rollup_config.clone(),
+        l1_chain_config: state.l1_chain_config.clone(),
         l2_chain_id: state.l2_chain_id,
         agreed_l2_head_hash: payload.agreed_l2_head_hash,
         agreed_l2_output_root: payload.agreed_l2_output_root,

@@ -1,5 +1,6 @@
 use crate::host::single::config::Config;
 use crate::server::{start_http_server_task, DerivationState};
+use base64::Engine;
 use clap::Parser;
 use l2_client::L2Client;
 use tracing::info;
@@ -17,7 +18,7 @@ async fn main() -> anyhow::Result<()> {
 
     // start tracing
     let filter = filter::EnvFilter::from_default_env()
-        .add_directive("info".parse()?);
+        .add_directive("optimism_preimage_maker=info".parse()?);
     tracing_subscriber::registry()
         .with(tracing_subscriber::fmt::layer())
         .with(filter)
@@ -31,11 +32,20 @@ async fn main() -> anyhow::Result<()> {
     let rollup_config = l2_client.rollup_config().await?;
     let chain_id = l2_client.chain_id().await?;
 
+    let l1_chain_config = if let Some(l1_chain_config) = &config.l1_chain_config {
+        let decoded = base64::engine::general_purpose::STANDARD.decode(l1_chain_config)?;
+        let l1_chain_config: kona_genesis::L1ChainConfig = serde_json::from_slice(&decoded)?;
+        Some(l1_chain_config)
+    } else {
+        None
+    };
+
     // Start HTTP server
     let http_server_task = start_http_server_task(
         config.http_server_addr.as_str(),
         DerivationState {
             rollup_config: rollup_config.clone(),
+            l1_chain_config,
             config: config.clone(),
             l2_chain_id: chain_id,
         },
