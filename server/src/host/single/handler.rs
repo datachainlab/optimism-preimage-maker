@@ -5,14 +5,14 @@ use crate::host::single::local_kv::LocalKeyValueStore;
 use crate::host::single::trace::{encode_to_bytes, TracingKeyValueStore};
 use alloy_primitives::B256;
 use anyhow::Result;
-use kona_genesis::RollupConfig;
+use kona_genesis::{L1ChainConfig, RollupConfig};
 use kona_host::single::{SingleChainHintHandler, SingleChainHost};
 use kona_host::{MemoryKeyValueStore, OnlineHostBackend, PreimageServer, SplitKeyValueStore};
 use kona_preimage::{
     BidirectionalChannel, HintReader, HintWriter, NativeChannel, OracleReader, OracleServer,
     PreimageKey,
 };
-use kona_proof::boot::L2_ROLLUP_CONFIG_KEY;
+use kona_proof::boot::{L1_CONFIG_KEY, L2_ROLLUP_CONFIG_KEY};
 use kona_proof::HintType;
 use std::sync::Arc;
 use tokio::sync::RwLock;
@@ -28,6 +28,8 @@ pub struct DerivationRequest {
     pub l1_head_hash: B256,
     pub l2_output_root: B256,
     pub l2_block_number: u64,
+    /// L1 chain config, only required in devnet
+    pub l1_chain_config: Option<L1ChainConfig>,
 }
 
 impl DerivationRequest {
@@ -103,6 +105,13 @@ impl DerivationRequest {
         let local_key = PreimageKey::new_local(L2_ROLLUP_CONFIG_KEY.to());
         let roll_up_config_json = serde_json::to_vec(&self.rollup_config)?;
         used.insert(local_key, roll_up_config_json);
+
+        // In devnet, we need to provide L1 chain config preimage
+        if let Some(l1_chain_config) = &self.l1_chain_config {
+            let local_key = PreimageKey::new_local(L1_CONFIG_KEY.to());
+            let l1_chain_config_json = serde_json::to_vec(l1_chain_config)?;
+            used.insert(local_key, l1_chain_config_json);
+        }
 
         let entry_size = used.len();
         let preimage = encode_to_bytes(used);

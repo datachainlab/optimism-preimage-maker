@@ -7,8 +7,8 @@ use anyhow::Result;
 use kona_host::KeyValueStore;
 use kona_preimage::PreimageKey;
 use kona_proof::boot::{
-    L1_HEAD_KEY, L2_CHAIN_ID_KEY, L2_CLAIM_BLOCK_NUMBER_KEY, L2_CLAIM_KEY, L2_OUTPUT_ROOT_KEY,
-    L2_ROLLUP_CONFIG_KEY,
+    L1_CONFIG_KEY, L1_HEAD_KEY, L2_CHAIN_ID_KEY, L2_CLAIM_BLOCK_NUMBER_KEY, L2_CLAIM_KEY,
+    L2_OUTPUT_ROOT_KEY, L2_ROLLUP_CONFIG_KEY,
 };
 
 /// A simple, synchronous key-value store that returns data from a [SingleChainHostCli] config.
@@ -37,6 +37,19 @@ impl KeyValueStore for LocalKeyValueStore {
                 let rollup_config = self.cfg.rollup_config.clone();
                 let serialized = serde_json::to_vec(&rollup_config).ok()?;
                 Some(serialized)
+            }
+            L1_CONFIG_KEY => {
+                let l1_chain_config = self.cfg.l1_chain_config.clone();
+                match l1_chain_config {
+                    None => {
+                        tracing::error!("L1 chain config is not provided in derivation request");
+                        None
+                    }
+                    Some(l1_chain_config) => {
+                        let serialized = serde_json::to_vec(&l1_chain_config).ok()?;
+                        Some(serialized)
+                    }
+                }
             }
             _ => None,
         }

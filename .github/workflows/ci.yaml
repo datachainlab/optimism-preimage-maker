@@ -7,6 +7,7 @@ on:
   pull_request:
     branches:
       - main
+      - develop
 
 jobs:
   lint:
@@ -37,6 +38,12 @@ jobs:
           submodules: recursive
           fetch-depth: 0
       - uses: actions-rust-lang/setup-rust-toolchain@v1
+      - name: Clean up unnecessary packages
+        run: |
+          sudo rm -rf "/usr/share/dotnet" || true
+          sudo rm -rf "/usr/local/lib/android" || true
+          sudo rm -rf "/usr/local/share/boost" || true
+          docker system prune -a --volumes -f
       - uses: Swatinem/rust-cache@v2
       - uses: extractions/setup-just@v2
         with:
@@ -49,7 +56,7 @@ jobs:
           echo "deb [trusted=yes] https://apt.fury.io/kurtosis-tech/ /" | sudo tee /etc/apt/sources.list.d/kurtosis.list
           sudo apt update
           sudo apt remove kurtosis-cli
-          sudo apt install kurtosis-cli=1.8.1 -V
+          sudo apt install kurtosis-cli=1.11.1 -V
       - name: Prepare optimism
         run: make chain
       - name: Start optimism

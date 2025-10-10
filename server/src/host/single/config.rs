@@ -30,4 +30,8 @@ pub struct Config {
     /// look up the config in the superchain registry.
     #[clap(long, default_value = "0.0.0.0:10080")]
     pub http_server_addr: String,
+
+    /// Optional L1 chain config base64 json string. (this is only required for devnet)
+    #[clap(long)]
+    pub l1_chain_config: Option<String>,
 }
