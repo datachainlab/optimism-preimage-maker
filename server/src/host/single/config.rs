@@ -31,7 +31,7 @@ pub struct Config {
     #[clap(long, default_value = "0.0.0.0:10080")]
     pub http_server_addr: String,
 
-    /// Optional path to L1 chain config base64 json string. If provided, the host will use this config instead of
+    /// Optional L1 chain config base64 json string. (this is only required for devnet)
     #[clap(long)]
     pub l1_chain_config: Option<String>,
 }
