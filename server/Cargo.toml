@@ -22,12 +22,13 @@ kona-host = { workspace = true, features=["single"] }
 kona-proof = { workspace = true, features = ["std"] }
 kona-preimage = { workspace = true, features = ["std"] }
 kona-genesis = { workspace = true, features = ["std", "serde"] }
+kona-registry = { workspace = true }
 
 # Alloy
 alloy-primitives = { workspace = true, features = ["map", "serde"] }
 
 # optimism derivation
-optimism-derivation = { git = "https://github.com/datachainlab/optimism-elc", rev = "v0.1.5", default-features = false }
+optimism-derivation = { git = "https://github.com/datachainlab/optimism-elc", rev = "861218ac6804acfed288b65d033660208f6db372", default-features = false }
 base64 = "0.22.1"
 
 [dev-dependencies]

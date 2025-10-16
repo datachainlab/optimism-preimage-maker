@@ -15,7 +15,7 @@ use tokio::task::JoinHandle;
 use tracing::{error, info};
 
 pub struct DerivationState {
-    pub rollup_config: RollupConfig,
+    pub rollup_config: Option<RollupConfig>,
     pub l1_chain_config: Option<L1ChainConfig>,
     pub config: Config,
     pub l2_chain_id: u64,

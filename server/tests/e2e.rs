@@ -72,7 +72,6 @@ async fn test_make_preimages_success() {
     assert_eq!(preimage_bytes.status(), 200);
 
     let preimage_bytes = preimage_bytes.bytes().await.unwrap();
-    let rollup_config = l2_client.rollup_config().await.unwrap();
 
     tracing::info!("start derivation ");
     let preimages = Preimages::decode(preimage_bytes).unwrap();
@@ -85,7 +84,7 @@ async fn test_make_preimages_success() {
     );
 
     let chain_id = l2_client.chain_id().await.unwrap();
-    let result = derivation.verify(chain_id, &rollup_config, oracle);
+    let result = derivation.verify(chain_id, oracle);
     match result {
         Ok(h) => tracing::info!("Derivation verified successfully {:? }", h),
         Err(e) => {

@@ -4092,7 +4092,7 @@ dependencies = [
 [[package]]
 name = "optimism-derivation"
 version = "0.1.1"
-source = "git+https://github.com/datachainlab/optimism-elc?rev=v0.1.5#91413fc8bb29b462c0dbf75e32b2ef18f5df68cc"
+source = "git+https://github.com/datachainlab/optimism-elc?rev=861218ac6804acfed288b65d033660208f6db372#861218ac6804acfed288b65d033660208f6db372"
 dependencies = [
  "alloy-consensus",
  "alloy-eips",
@@ -4132,6 +4132,7 @@ dependencies = [
  "kona-host",
  "kona-preimage",
  "kona-proof",
+ "kona-registry",
  "optimism-derivation",
  "prost",
  "reqwest",

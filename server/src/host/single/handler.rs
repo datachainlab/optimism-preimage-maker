@@ -20,7 +20,7 @@ use tokio::sync::RwLock;
 #[derive(Debug, Clone)]
 pub struct DerivationRequest {
     pub config: Config,
-    pub rollup_config: RollupConfig,
+    pub rollup_config: Option<RollupConfig>,
     pub l2_chain_id: u64,
     /// for L2 derivation
     pub agreed_l2_head_hash: B256,
@@ -102,11 +102,13 @@ impl DerivationRequest {
             let mut lock = kv_store.write().await;
             std::mem::take(&mut lock.used)
         };
-        let local_key = PreimageKey::new_local(L2_ROLLUP_CONFIG_KEY.to());
-        let roll_up_config_json = serde_json::to_vec(&self.rollup_config)?;
-        used.insert(local_key, roll_up_config_json);
 
-        // In devnet, we need to provide L1 chain config preimage
+        // In devnet, we need to provide L1 chain config and l2 rollup config
+        if let Some(rollup_config) = &self.rollup_config {
+            let local_key = PreimageKey::new_local(L2_ROLLUP_CONFIG_KEY.to());
+            let roll_up_config_json = serde_json::to_vec(rollup_config)?;
+            used.insert(local_key, roll_up_config_json);
+        }
         if let Some(l1_chain_config) = &self.l1_chain_config {
             let local_key = PreimageKey::new_local(L1_CONFIG_KEY.to());
             let l1_chain_config_json = serde_json::to_vec(l1_chain_config)?;
