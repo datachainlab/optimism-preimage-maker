@@ -86,6 +86,7 @@ impl DerivationRequest {
             agreed_l2_head_hash: self.agreed_l2_head_hash,
             claimed_l2_output_root: self.l2_output_root,
             claimed_l2_block_number: self.l2_block_number,
+            enable_experimental_witness_endpoint: true,
             ..Default::default()
         };
         let providers = cfg.create_providers().await?;
