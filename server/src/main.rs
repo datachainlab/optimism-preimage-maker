@@ -1,5 +1,6 @@
 use crate::host::single::config::Config;
 use crate::server::{start_http_server_task, DerivationState};
+use anyhow::Context;
 use base64::Engine;
 use clap::Parser;
 use kona_registry::ROLLUP_CONFIGS;
@@ -38,7 +39,10 @@ async fn main() -> anyhow::Result<()> {
             chain_id
         );
         let l2_config = l2_client.rollup_config().await?;
-        let l1_chain_config = config.l1_chain_config.as_ref().unwrap();
+        let l1_chain_config = config
+            .l1_chain_config
+            .as_ref()
+            .context("l1 chain config is required")?;
         let decoded = base64::engine::general_purpose::STANDARD.decode(l1_chain_config)?;
         let l1_chain_config: kona_genesis::L1ChainConfig = serde_json::from_slice(&decoded)?;
         (Some(l2_config), Some(l1_chain_config))
