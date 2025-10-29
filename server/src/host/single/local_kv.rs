@@ -33,24 +33,20 @@ impl KeyValueStore for LocalKeyValueStore {
             L2_CLAIM_KEY => Some(self.cfg.l2_output_root.to_vec()),
             L2_CLAIM_BLOCK_NUMBER_KEY => Some(self.cfg.l2_block_number.to_be_bytes().to_vec()),
             L2_CHAIN_ID_KEY => Some(self.cfg.l2_chain_id.to_be_bytes().to_vec()),
-            L2_ROLLUP_CONFIG_KEY => {
-                let rollup_config = self.cfg.rollup_config.clone();
-                let serialized = serde_json::to_vec(&rollup_config).ok()?;
-                Some(serialized)
-            }
-            L1_CONFIG_KEY => {
-                let l1_chain_config = self.cfg.l1_chain_config.clone();
-                match l1_chain_config {
-                    None => {
-                        tracing::error!("L1 chain config is not provided in derivation request");
-                        None
-                    }
-                    Some(l1_chain_config) => {
-                        let serialized = serde_json::to_vec(&l1_chain_config).ok()?;
-                        Some(serialized)
-                    }
+            L2_ROLLUP_CONFIG_KEY => match &self.cfg.rollup_config {
+                None => {
+                    tracing::error!("Rollup config is not provided in derivation request");
+                    None
                 }
-            }
+                Some(rollup_config) => serde_json::to_vec(rollup_config).ok(),
+            },
+            L1_CONFIG_KEY => match &self.cfg.l1_chain_config {
+                None => {
+                    tracing::error!("L1 chain config is not provided in derivation request");
+                    None
+                }
+                Some(l1_chain_config) => serde_json::to_vec(l1_chain_config).ok(),
+            },
             _ => None,
         }
     }
