@@ -2,7 +2,7 @@ SED = $(shell which gsed 2>/dev/null || echo sed)
 
 .PHONY: chain
 chain:
-	git clone --depth 1 -b v1.14.1 https://github.com/ethereum-optimism/optimism ./chain
+	git clone --depth 1 -b v1.16.1 https://github.com/ethereum-optimism/optimism ./chain
 	# override devnet config
 	cp kurtosis/kurtosis.yaml ./chain/kurtosis-devnet/optimism-package-trampoline/kurtosis.yml
 	cp kurtosis/main.star ./chain/kurtosis-devnet/optimism-package-trampoline/main.star
