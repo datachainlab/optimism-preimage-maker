@@ -15,24 +15,34 @@ use kona_preimage::{
 use kona_proof::boot::{L1_CONFIG_KEY, L2_ROLLUP_CONFIG_KEY};
 use kona_proof::HintType;
 use std::sync::Arc;
+use serde::{Deserialize, Serialize};
 use tokio::sync::RwLock;
 
 #[derive(Debug, Clone)]
-pub struct DerivationRequest {
+pub struct DerivationConfig {
     pub config: Config,
     pub rollup_config: Option<RollupConfig>,
     pub l2_chain_id: u64,
-    /// for L2 derivation
-    pub agreed_l2_head_hash: B256,
-    pub agreed_l2_output_root: B256,
-    pub l1_head_hash: B256,
-    pub l2_output_root: B256,
-    pub l2_block_number: u64,
     /// L1 chain config, only required in devnet
     pub l1_chain_config: Option<L1ChainConfig>,
 }
 
-impl DerivationRequest {
+#[derive(Clone, Debug, Deserialize, Serialize)]
+pub struct DerivationRequest {
+    pub l1_head_hash: B256,
+    pub agreed_l2_head_hash: B256,
+    pub agreed_l2_output_root: B256,
+    pub l2_output_root: B256,
+    pub l2_block_number: u64,
+}
+
+#[derive(Debug, Clone)]
+pub struct Derivation {
+    pub config: DerivationConfig,
+    pub request: DerivationRequest,
+}
+
+impl Derivation {
     fn create_key_value_store(&self) -> Result<Arc<RwLock<TracingKeyValueStore>>> {
         // Only memory store is traceable
         // Using disk causes insufficient blob preimages in ELC because the already stored data is not traceable
@@ -78,14 +88,14 @@ impl DerivationRequest {
         let preimage = BidirectionalChannel::new()?;
         let kv_store = self.create_key_value_store()?;
         let cfg = SingleChainHost {
-            l1_node_address: Some(self.config.l1_node_address.clone()),
-            l2_node_address: Some(self.config.l2_node_address.clone()),
-            l1_beacon_address: Some(self.config.l1_beacon_address.clone()),
-            l1_head: self.l1_head_hash,
-            agreed_l2_output_root: self.agreed_l2_output_root,
-            agreed_l2_head_hash: self.agreed_l2_head_hash,
-            claimed_l2_output_root: self.l2_output_root,
-            claimed_l2_block_number: self.l2_block_number,
+            l1_node_address: Some(self.config.config.l1_node_address.clone()),
+            l2_node_address: Some(self.config.config.l2_node_address.clone()),
+            l1_beacon_address: Some(self.config.config.l1_beacon_address.clone()),
+            l1_head: self.request.l1_head_hash,
+            agreed_l2_output_root: self.request.agreed_l2_output_root,
+            agreed_l2_head_hash: self.request.agreed_l2_head_hash,
+            claimed_l2_output_root: self.request.l2_output_root,
+            claimed_l2_block_number: self.request.l2_block_number,
             ..Default::default()
         };
         let providers = cfg.create_providers().await?;
@@ -104,12 +114,12 @@ impl DerivationRequest {
         };
 
         // In devnet, we need to provide L1 chain config and l2 rollup config
-        if let Some(rollup_config) = &self.rollup_config {
+        if let Some(rollup_config) = &self.config.rollup_config {
             let local_key = PreimageKey::new_local(L2_ROLLUP_CONFIG_KEY.to());
             let roll_up_config_json = serde_json::to_vec(rollup_config)?;
             used.insert(local_key, roll_up_config_json);
         }
-        if let Some(l1_chain_config) = &self.l1_chain_config {
+        if let Some(l1_chain_config) = &self.config.l1_chain_config {
             let local_key = PreimageKey::new_local(L1_CONFIG_KEY.to());
             let l1_chain_config_json = serde_json::to_vec(l1_chain_config)?;
             used.insert(local_key, l1_chain_config_json);

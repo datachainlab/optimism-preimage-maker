@@ -1,5 +1,5 @@
 use crate::derivation::host::single::config::Config;
-use crate::web::handler::{start_http_server_task, DerivationState};
+use crate::web::{start_http_server_task, };
 use anyhow::Context;
 use base64::Engine;
 use clap::Parser;
@@ -9,11 +9,13 @@ use tracing::info;
 use tracing_subscriber::filter;
 use tracing_subscriber::layer::SubscriberExt;
 use tracing_subscriber::util::SubscriberInitExt;
+use crate::derivation::host::single::handler::DerivationConfig;
 
 mod client;
 mod web;
-
+mod collector;
 mod derivation;
+mod data;
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
@@ -51,15 +53,19 @@ async fn main() -> anyhow::Result<()> {
         (None, None)
     };
 
+    let derivation_config = DerivationConfig {
+        rollup_config,
+        l1_chain_config,
+        config: config.clone(),
+        l2_chain_id: chain_id,
+    };
+
+    // TODO Start Collector
+
     // Start HTTP server
     let http_server_task = start_http_server_task(
         config.http_server_addr.as_str(),
-        DerivationState {
-            rollup_config,
-            l1_chain_config,
-            config: config.clone(),
-            l2_chain_id: chain_id,
-        },
+        derivation_config.clone()
     );
 
     let result = http_server_task.await;

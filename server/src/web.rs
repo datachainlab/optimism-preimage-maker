@@ -1,5 +1,5 @@
 use crate::derivation::host::single::config::Config;
-use crate::derivation::host::single::handler::DerivationRequest;
+use crate::derivation::host::single::handler::{Derivation, DerivationConfig, DerivationRequest};
 use alloy_primitives::B256;
 use anyhow::{Context, Result};
 use axum::extract::State;
@@ -14,14 +14,7 @@ use tokio::net::TcpListener;
 use tokio::task::JoinHandle;
 use tracing::{error, info};
 
-pub struct DerivationState {
-    pub rollup_config: Option<RollupConfig>,
-    pub l1_chain_config: Option<L1ChainConfig>,
-    pub config: Config,
-    pub l2_chain_id: u64,
-}
-
-async fn start_http_server(addr: &str, derivation_state: DerivationState) -> Result<()> {
+async fn start_http_server(addr: &str, derivation_state: DerivationConfig) -> Result<()> {
     let app = axum::Router::new()
         .route("/derivation", post(derivation))
         .with_state(Arc::new(derivation_state));
@@ -32,7 +25,7 @@ async fn start_http_server(addr: &str, derivation_state: DerivationState) -> Res
     Ok(())
 }
 
-pub fn start_http_server_task(addr: &str, state: DerivationState) -> JoinHandle<Result<()>> {
+pub fn start_http_server_task(addr: &str, state: DerivationConfig) -> JoinHandle<Result<()>> {
     let addr = addr.to_string();
     tokio::spawn(async move {
         start_http_server(&addr, state)
@@ -53,7 +46,7 @@ pub struct Request {
 }
 
 async fn derivation(
-    State(state): State<Arc<DerivationState>>,
+    State(state): State<Arc<DerivationConfig>>,
     Json(payload): Json<Request>,
 ) -> (StatusCode, Vec<u8>) {
     info!("derivation request: {:?}", payload);
@@ -61,16 +54,15 @@ async fn derivation(
         return (StatusCode::BAD_REQUEST, v.as_bytes().to_vec());
     }
 
-    let derivation = DerivationRequest {
-        config: state.config.clone(),
-        rollup_config: state.rollup_config.clone(),
-        l1_chain_config: state.l1_chain_config.clone(),
-        l2_chain_id: state.l2_chain_id,
-        agreed_l2_head_hash: payload.agreed_l2_head_hash,
-        agreed_l2_output_root: payload.agreed_l2_output_root,
-        l1_head_hash: payload.l1_head_hash,
-        l2_output_root: payload.l2_output_root,
-        l2_block_number: payload.l2_block_number,
+    let derivation = Derivation {
+        config: state.as_ref().clone(),
+        request: DerivationRequest {
+            agreed_l2_head_hash: payload.agreed_l2_head_hash,
+            agreed_l2_output_root: payload.agreed_l2_output_root,
+            l1_head_hash: payload.l1_head_hash,
+            l2_output_root: payload.l2_output_root,
+            l2_block_number: payload.l2_block_number,
+        }
     };
 
     match derivation.start().await {
