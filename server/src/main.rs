@@ -1,18 +1,19 @@
-use crate::host::single::config::Config;
-use crate::server::{start_http_server_task, DerivationState};
+use crate::derivation::host::single::config::Config;
+use crate::web::handler::{start_http_server_task, DerivationState};
 use anyhow::Context;
 use base64::Engine;
 use clap::Parser;
 use kona_registry::ROLLUP_CONFIGS;
-use l2_client::L2Client;
+use crate::client::l2_client::L2Client;
 use tracing::info;
 use tracing_subscriber::filter;
 use tracing_subscriber::layer::SubscriberExt;
 use tracing_subscriber::util::SubscriberInitExt;
 
-mod host;
-pub mod l2_client;
-mod server;
+mod client;
+mod web;
+
+mod derivation;
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {

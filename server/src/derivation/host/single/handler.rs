@@ -1,8 +1,8 @@
 //! [SingleChainHostCli]'s [HostOrchestrator] + [DetachedHostOrchestrator] implementations.
 
-use crate::host::single::config::Config;
-use crate::host::single::local_kv::LocalKeyValueStore;
-use crate::host::single::trace::{encode_to_bytes, TracingKeyValueStore};
+use crate::derivation::host::single::config::Config;
+use crate::derivation::host::single::local_kv::LocalKeyValueStore;
+use crate::derivation::host::single::trace::{encode_to_bytes, TracingKeyValueStore};
 use alloy_primitives::B256;
 use anyhow::Result;
 use kona_genesis::{L1ChainConfig, RollupConfig};

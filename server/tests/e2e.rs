@@ -1,7 +1,7 @@
 use optimism_derivation::derivation::Derivation;
 use optimism_derivation::oracle::MemoryOracleClient;
 use optimism_derivation::types::Preimages;
-use optimism_preimage_maker::l2_client::L2Client;
+use optimism_preimage_maker::client::l2_client::L2Client;
 use optimism_preimage_maker::Request;
 use prost::Message;
 use serial_test::serial;

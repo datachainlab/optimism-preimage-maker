@@ -1,5 +1,5 @@
-use crate::host::single::config::Config;
-use crate::host::single::handler::DerivationRequest;
+use crate::derivation::host::single::config::Config;
+use crate::derivation::host::single::handler::DerivationRequest;
 use alloy_primitives::B256;
 use anyhow::{Context, Result};
 use axum::extract::State;
