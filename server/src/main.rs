@@ -4,11 +4,14 @@ use anyhow::Context;
 use base64::Engine;
 use clap::Parser;
 use kona_registry::ROLLUP_CONFIGS;
+use tokio_util::sync::CancellationToken;
 use crate::client::l2_client::L2Client;
 use tracing::info;
 use tracing_subscriber::filter;
 use tracing_subscriber::layer::SubscriberExt;
 use tracing_subscriber::util::SubscriberInitExt;
+use crate::collector::PreimageCollector;
+use crate::data::file_preimage_repository::FilePreimageRepository;
 use crate::derivation::host::single::handler::DerivationConfig;
 
 mod client;
@@ -60,7 +63,19 @@ async fn main() -> anyhow::Result<()> {
         l2_chain_id: chain_id,
     };
 
-    // TODO Start Collector
+    // Start preimage collector
+    let preimage_repository = FilePreimageRepository::new(".preimage").await?;
+    let collector = PreimageCollector {
+        client: Default::default(),
+        config: derivation_config.clone(),
+        chunk: 100,
+        preimage_repository,
+    };
+    let ctx = CancellationToken::new();
+    let ctx_for_collector = ctx.clone();
+    let collector_task = tokio::spawn(async move {
+        collector.start(ctx_for_collector).await;
+    });
 
     // Start HTTP server
     let http_server_task = start_http_server_task(
@@ -68,8 +83,12 @@ async fn main() -> anyhow::Result<()> {
         derivation_config.clone()
     );
 
+    // Wait for signal
     let result = http_server_task.await;
-    info!("server result : {:?}", result);
+    ctx.cancel();
+    let collector_result = collector_task.await;
+
+    info!("shutdown : http_result={:?}, collector_result={:?}", result, collector_result);
 
     Ok(())
 }

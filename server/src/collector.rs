@@ -6,14 +6,14 @@ use crate::client::l2_client::{L2Client};
 use crate::data::preimage_repository::{PreimageMetadata, PreimageRepository};
 use crate::derivation::host::single::handler::{Derivation, DerivationConfig, DerivationRequest};
 
-pub struct PreimageCollector {
+pub struct PreimageCollector<T: PreimageRepository> {
     pub client: L2Client,
     pub config: DerivationConfig,
     pub chunk: u64,
-    pub preimage_repository: Box<dyn PreimageRepository>
+    pub preimage_repository: T
 }
 
-impl PreimageCollector {
+impl <T: PreimageRepository> PreimageCollector<T> {
     pub async fn start(&self, ctx: CancellationToken) {
 
         let mut latest_l2: u64 = self.preimage_repository.latest_metadata().await.unwrap().claimed;
