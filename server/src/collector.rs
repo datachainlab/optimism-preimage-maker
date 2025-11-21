@@ -1,7 +1,7 @@
 use alloy_primitives::B256;
 use tokio::select;
 use tokio_util::sync::CancellationToken;
-use tracing::{error, info};
+use tracing::{error, info, metadata};
 use crate::client::l2_client::{L2Client};
 use crate::data::preimage_repository::{PreimageMetadata, PreimageRepository};
 use crate::derivation::host::single::handler::{Derivation, DerivationConfig, DerivationRequest};
@@ -10,23 +10,27 @@ pub struct PreimageCollector<T: PreimageRepository> {
     pub client: L2Client,
     pub config: DerivationConfig,
     pub chunk: u64,
+    pub initial_claimed: u64,
     pub preimage_repository: T
 }
 
 impl <T: PreimageRepository> PreimageCollector<T> {
     pub async fn start(&self, ctx: CancellationToken) {
 
-        let mut latest_l2: u64 = self.preimage_repository.latest_metadata().await.unwrap().claimed;
+        let mut latest_l2: u64 = match self.preimage_repository.latest_metadata().await {
+            Some(metadata) => metadata.claimed,
+            None => self.initial_claimed
+        };
         loop {
             select! {
                  _ = ctx.cancelled() => break,
-                _ = tokio::time::sleep(std::time::Duration::from_secs(10)) => {
+                _ = tokio::time::sleep(std::time::Duration::from_secs(60)) => {
 
                     // Check sync status
                     let sync_status = self.client.sync_status().await;
                     let sync_status = match sync_status {
                         Ok(sync_status) => {
-                            info!("sync status: processed_l2={}, finalized_l2={}, finalized_l1={}", latest_l2, sync_status.finalized_l2.number, sync_status.finalized_l1.number);
+                            info!("sync status: claimed_l2={}, next_claiming_l2={}, finalized_l1={}", latest_l2, sync_status.finalized_l2.number, sync_status.finalized_l1.number);
                             if sync_status.finalized_l2.number <= latest_l2 {
                                 continue;
                             }
@@ -40,11 +44,11 @@ impl <T: PreimageRepository> PreimageCollector<T> {
 
                     // Collect preimage from latest_l2 to finalized_l2
                     let pairs = split(latest_l2, sync_status.finalized_l2.number, self.chunk);
-                    info!("derivation length={}", pairs.len());
+                    info!("derivation length={}, target={:?}", pairs.len(), pairs);
                     for (start, end) in pairs {
                         match self.collect(sync_status.finalized_l1.hash, start, end).await {
                             Ok(_) =>  {
-                                info!("saving preimage success, latest={end}");
+                                info!("saving preimage success, claimed_l2={end}");
                                 latest_l2 = end;
                             },
                             Err(e) => {
@@ -87,7 +91,7 @@ impl <T: PreimageRepository> PreimageCollector<T> {
 fn split(agreed: u64, finalized: u64, chunk: u64) -> Vec<(u64, u64)> {
     let mut pairs: Vec<(u64, u64)> = Vec::new();
     let mut start = agreed;
-    while start <= finalized {
+    while start < finalized {
         let end = std::cmp::min(start + chunk, finalized);
         pairs.push((start, end));
         start = end;

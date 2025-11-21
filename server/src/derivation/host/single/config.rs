@@ -34,4 +34,9 @@ pub struct Config {
     /// Optional L1 chain config base64 json string. (this is only required for devnet)
     #[clap(long)]
     pub l1_chain_config: Option<String>,
+
+    /// Optional: Use Local file preimage directory if specified.
+    /// Make sure that the disk space is enough.
+    #[clap(long)]
+    pub local_preimage_dir: Option<String>,
 }

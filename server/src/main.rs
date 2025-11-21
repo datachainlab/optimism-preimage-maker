@@ -4,6 +4,7 @@ use anyhow::Context;
 use base64::Engine;
 use clap::Parser;
 use kona_registry::ROLLUP_CONFIGS;
+use tokio::{select, try_join};
 use tokio_util::sync::CancellationToken;
 use crate::client::l2_client::L2Client;
 use tracing::info;
@@ -63,12 +64,13 @@ async fn main() -> anyhow::Result<()> {
         l2_chain_id: chain_id,
     };
 
-    // Start preimage collector
+    // Start preimage collector TODO directory
     let preimage_repository = FilePreimageRepository::new(".preimage").await?;
     let collector = PreimageCollector {
-        client: Default::default(),
+        client: l2_client,
         config: derivation_config.clone(),
         chunk: 100,
+        initial_claimed: 200,
         preimage_repository,
     };
     let ctx = CancellationToken::new();
@@ -84,11 +86,14 @@ async fn main() -> anyhow::Result<()> {
     );
 
     // Wait for signal
-    let result = http_server_task.await;
-    ctx.cancel();
-    let collector_result = collector_task.await;
-
-    info!("shutdown : http_result={:?}, collector_result={:?}", result, collector_result);
-
+    select! {
+        result = http_server_task => {
+            info!("stop http server: {:?}", result);
+        }
+        result = collector_task => {
+            info!("stop collector : {:?}", result);
+        }
+    };
+    info!("shutdown complete");
     Ok(())
 }

@@ -21,7 +21,9 @@ impl FilePreimageRepository {
 
         let mut metadata_list = vec![];
 
-        let mut entries = fs::read_dir(dir).await?;
+        let mut entries = fs::read_dir(dir).await.map_err(|e | {
+            anyhow::anyhow!("failed to read dir: {:?}, error={}", dir, e)
+        })?;
         while let Some(entry) = entries.next_entry().await? {
             match entry.file_name().to_str() {
                 None => continue,
@@ -68,9 +70,9 @@ impl PreimageRepository for FilePreimageRepository {
         }
     }
 
-    async fn latest_metadata(&self) -> anyhow::Result<PreimageMetadata> {
+    async fn latest_metadata(&self) -> Option<PreimageMetadata> {
         let lock = self.metadata_list.read().unwrap();
-        let last = lock.last().ok_or(anyhow::anyhow!("no metadata"))?;
-        Ok(last.clone())
+        let last = lock.last().cloned();
+        last
     }
 }

@@ -40,5 +40,5 @@ pub trait PreimageRepository {
 
     async fn list_metadata(&self, gt_claimed: Option<u64>) -> anyhow::Result<Vec<PreimageMetadata>>;
 
-    async fn latest_metadata(&self) -> anyhow::Result<PreimageMetadata>;
+    async fn latest_metadata(&self) -> Option<PreimageMetadata>;
 }

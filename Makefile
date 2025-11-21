@@ -33,6 +33,7 @@ wait:
 
 .PHONY: server-up
 server-up:
+	mkdir -p .preimage && true
 	@L2_ROLLUP_PORT=$$(jq -r '.l2RollupPort' hostPort.json);\
 	L2_GETH_PORT=$$(jq -r '.l2GethPort' hostPort.json);\
 	L1_GETH_PORT=$$(jq -r '.l1GethPort' hostPort.json);\
