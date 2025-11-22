@@ -114,13 +114,5 @@ async fn list_metadata_from(
     }
 
     let result = state.preimage_repository.list_metadata(Some(payload.gt_claimed)).await;
-    match result {
-        Ok(metadata) => {
-            (StatusCode::OK, Json(metadata))
-        }
-        Err(e) => {
-            info!("failed to list metadata from {}: {:?}", payload.gt_claimed, e);
-            (StatusCode::NOT_FOUND, Json(vec![]))
-        }
-    }
+    (StatusCode::OK, Json(result))
 }

@@ -91,6 +91,7 @@ pub struct Block {
     pub hash: B256,
 }
 
+#[derive(Debug, Clone)]
 pub struct L2Client {
     op_node_addr: String,
     op_geth_addr: String,

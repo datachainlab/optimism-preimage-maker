@@ -45,5 +45,9 @@ pub struct Config {
 
     /// Initial claimed l2 block number that is used when no preimage is created.
     #[clap(long)]
-    pub initial_claimed_l2: u64
+    pub initial_claimed_l2: u64,
+   
+    /// Max concurrency of preimage collector.
+    #[clap(long, default_value = "10")]
+    pub max_collect_concurrency: u64
 }

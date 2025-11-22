@@ -66,20 +66,20 @@ impl PreimageRepository for FilePreimageRepository {
         let preimage = fs::read(&path).await?;
         Ok(preimage)
     }
-    async fn list_metadata(&self, gt_claimed: Option<u64>) -> anyhow::Result<Vec<PreimageMetadata>> {
-        let read_only_metadata = {
+    async fn list_metadata(&self, gt_claimed: Option<u64>) -> Vec<PreimageMetadata> {
+        let mut raw = {
             let lock = self.metadata_list.read().unwrap();
             lock.clone()
         };
+         raw.sort_by(|a, b| a.agreed.cmp(&b.agreed));
         match gt_claimed {
-            None => Ok(read_only_metadata),
-            Some(gt_claimed) => Ok(read_only_metadata.into_iter().filter(|m| m.claimed > gt_claimed).collect())
+            None => raw,
+            Some(gt_claimed) => raw.into_iter().filter(|m| m.claimed > gt_claimed).collect()
         }
     }
 
     async fn latest_metadata(&self) -> Option<PreimageMetadata> {
-        let lock = self.metadata_list.read().unwrap();
-        let last = lock.last().cloned();
-        last
+        let mut result = self.list_metadata(None).await;
+        result.pop()
     }
 }

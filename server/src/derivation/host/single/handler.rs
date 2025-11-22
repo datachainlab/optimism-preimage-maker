@@ -38,7 +38,7 @@ pub struct DerivationRequest {
 
 #[derive(Debug, Clone)]
 pub struct Derivation {
-    pub config: DerivationConfig,
+    pub config: Arc<DerivationConfig>,
     pub request: DerivationRequest,
 }
 

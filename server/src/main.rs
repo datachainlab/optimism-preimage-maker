@@ -68,11 +68,12 @@ async fn main() -> anyhow::Result<()> {
     // Start preimage collector
     let preimage_repository = Arc::new(FilePreimageRepository::new(&config.preimage_dir).await?);
     let collector = PreimageCollector {
-        client: l2_client,
-        config: derivation_config.clone(),
-        chunk: config.max_preimage_distance,
+        client: Arc::new(l2_client),
+        config: Arc::new(derivation_config),
+        max_distance: config.max_preimage_distance,
         initial_claimed: config.initial_claimed_l2,
         preimage_repository: preimage_repository.clone(),
+        max_concurrency: config.max_collect_concurrency as usize,
     };
     let collector_task = tokio::spawn(async move {
         collector.start().await;

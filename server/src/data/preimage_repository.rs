@@ -38,7 +38,7 @@ pub trait PreimageRepository : Send + Sync {
 
     async fn get(&self, metadata: &PreimageMetadata) -> anyhow::Result<Vec<u8>>;
 
-    async fn list_metadata(&self, gt_claimed: Option<u64>) -> anyhow::Result<Vec<PreimageMetadata>>;
+    async fn list_metadata(&self, gt_claimed: Option<u64>) -> Vec<PreimageMetadata>;
 
     async fn latest_metadata(&self) -> Option<PreimageMetadata>;
 }
