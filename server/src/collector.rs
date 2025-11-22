@@ -1,3 +1,4 @@
+use std::sync::Arc;
 use alloy_primitives::B256;
 use tokio::select;
 use tracing::{error, info, metadata};
@@ -10,7 +11,7 @@ pub struct PreimageCollector<T: PreimageRepository> {
     pub config: DerivationConfig,
     pub chunk: u64,
     pub initial_claimed: u64,
-    pub preimage_repository: T
+    pub preimage_repository: Arc<T>
 }
 
 impl <T: PreimageRepository> PreimageCollector<T> {
@@ -77,7 +78,7 @@ impl <T: PreimageRepository> PreimageCollector<T> {
             request,
         };
         let preimage = derivation.start().await?;
-        let metadata = PreimageMetadata { claimed: start, agreed: end, l1_head: l1_head_hash };
+        let metadata = PreimageMetadata { agreed: start, claimed: end, l1_head: l1_head_hash };
         info!("derivation success : {metadata:?}");
         self.preimage_repository.upsert(metadata, preimage).await
     }

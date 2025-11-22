@@ -1,3 +1,4 @@
+use std::sync::Arc;
 use crate::derivation::host::single::config::Config;
 use crate::web::{start_http_server_task, };
 use anyhow::Context;
@@ -10,6 +11,7 @@ use tracing::info;
 use tracing_subscriber::filter;
 use tracing_subscriber::layer::SubscriberExt;
 use tracing_subscriber::util::SubscriberInitExt;
+use crate::web::SharedState;
 use crate::collector::PreimageCollector;
 use crate::data::file_preimage_repository::FilePreimageRepository;
 use crate::derivation::host::single::handler::DerivationConfig;
@@ -64,13 +66,13 @@ async fn main() -> anyhow::Result<()> {
     };
 
     // Start preimage collector
-    let preimage_repository = FilePreimageRepository::new(&config.preimage_dir).await?;
+    let preimage_repository = Arc::new(FilePreimageRepository::new(&config.preimage_dir).await?);
     let collector = PreimageCollector {
         client: l2_client,
         config: derivation_config.clone(),
         chunk: config.max_preimage_distance,
         initial_claimed: config.initial_claimed_l2,
-        preimage_repository,
+        preimage_repository: preimage_repository.clone(),
     };
     let collector_task = tokio::spawn(async move {
         collector.start().await;
@@ -79,7 +81,9 @@ async fn main() -> anyhow::Result<()> {
     // Start HTTP server
     let http_server_task = start_http_server_task(
         config.http_server_addr.as_str(),
-        derivation_config.clone()
+        SharedState {
+           preimage_repository
+        }
     );
 
     // Wait for signal

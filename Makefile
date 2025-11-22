@@ -44,7 +44,8 @@ server-up:
 		--l2=http://localhost:$$L2_GETH_PORT \
 		--l1=http://localhost:$$L1_GETH_PORT \
 		--beacon=http://localhost:$$L1_BEACON_PORT \
-		--l1-chain-config=$$L1_CHAIN_CONFIG
+		--l1-chain-config=$$L1_CHAIN_CONFIG \
+		--initial-claimed-l2=103
 
 .PHONY: test
 test:

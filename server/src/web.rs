@@ -1,5 +1,6 @@
 use crate::derivation::host::single::config::Config;
 use crate::derivation::host::single::handler::{Derivation, DerivationConfig, DerivationRequest};
+use crate::data::preimage_repository::{PreimageMetadata, PreimageRepository};
 use alloy_primitives::B256;
 use anyhow::{Context, Result};
 use axum::extract::State;
@@ -14,10 +15,17 @@ use tokio::net::TcpListener;
 use tokio::task::JoinHandle;
 use tracing::{error, info};
 
-async fn start_http_server(addr: &str, derivation_state: DerivationConfig) -> Result<()> {
+#[derive(Clone)]
+pub struct SharedState {
+    pub preimage_repository: Arc<dyn PreimageRepository>,
+}
+
+async fn start_http_server(addr: &str, state: SharedState) -> Result<()> {
     let app = axum::Router::new()
-        .route("/derivation", post(derivation))
-        .with_state(Arc::new(derivation_state));
+        .route("/get_preimage", post(get_preimage))
+        .route("/get_latest_metadata", post(get_latest_metadata))
+        .route("/list_metadata_from", post(list_metadata_from))
+        .with_state(Arc::new(state));
 
     let listener = TcpListener::bind(addr).await?;
     tracing::info!("listening on {}", addr);
@@ -25,7 +33,7 @@ async fn start_http_server(addr: &str, derivation_state: DerivationConfig) -> Re
     Ok(())
 }
 
-pub fn start_http_server_task(addr: &str, state: DerivationConfig) -> JoinHandle<Result<()>> {
+pub fn start_http_server_task(addr: &str, state: SharedState) -> JoinHandle<Result<()>> {
     let addr = addr.to_string();
     tokio::spawn(async move {
         start_http_server(&addr, state)
@@ -35,68 +43,84 @@ pub fn start_http_server_task(addr: &str, state: DerivationConfig) -> JoinHandle
 }
 
 // handler
+pub type GetPreimageRequest = PreimageMetadata;
 
-#[derive(Clone, Debug, Deserialize, Serialize)]
-pub struct Request {
-    pub l1_head_hash: B256,
-    pub agreed_l2_head_hash: B256,
-    pub agreed_l2_output_root: B256,
-    pub l2_output_root: B256,
-    pub l2_block_number: u64,
-}
-
-async fn derivation(
-    State(state): State<Arc<DerivationConfig>>,
-    Json(payload): Json<Request>,
+async fn get_preimage(
+    State(state): State<Arc<SharedState>>,
+    Json(payload): Json<GetPreimageRequest>,
 ) -> (StatusCode, Vec<u8>) {
     info!("derivation request: {:?}", payload);
-    if let Err(v) = validate_request(&payload) {
+    if let Err(v) = validate_get_preimage_request(&payload) {
         return (StatusCode::BAD_REQUEST, v.as_bytes().to_vec());
     }
 
-    let derivation = Derivation {
-        config: state.as_ref().clone(),
-        request: DerivationRequest {
-            agreed_l2_head_hash: payload.agreed_l2_head_hash,
-            agreed_l2_output_root: payload.agreed_l2_output_root,
-            l1_head_hash: payload.l1_head_hash,
-            l2_output_root: payload.l2_output_root,
-            l2_block_number: payload.l2_block_number,
-        }
-    };
-
-    match derivation.start().await {
+    let result = state.preimage_repository.get(&payload).await;
+    match result {
         Ok(preimage) => {
-            info!("derivation success");
             (StatusCode::OK, preimage)
         }
         Err(e) => {
-            info!("failed to run derivation: {:?}", e);
+            info!("failed to get preimage: {:?}", e);
             (StatusCode::INTERNAL_SERVER_ERROR, vec![])
         }
     }
 }
 
-fn validate_request(payload: &Request) -> Result<(), &'static str> {
-    if payload.agreed_l2_output_root == payload.l2_output_root {
-        error!("agreed_l2_output_root and l2_output_root are same value");
-        return Err("agreed_l2_output_root and l2_output_root are the same value");
+fn validate_get_preimage_request(payload: &GetPreimageRequest) -> Result<(), &'static str> {
+    if payload.l1_head.is_empty() || payload.l1_head.is_zero() {
+        error!("invalid l1_head",);
+        return Err("invalid l1_head");
     }
-    if payload.agreed_l2_output_root.is_empty() || payload.agreed_l2_output_root.is_zero() {
-        error!("invalid agreed_l2_output_root",);
-        return Err("invalid agreed_l2_output_root");
-    }
-    if payload.l2_output_root.is_empty() || payload.l2_output_root.is_zero() {
-        error!("invalid l2_output_root",);
-        return Err("invalid l2_output_root");
-    }
-    if payload.l1_head_hash.is_empty() || payload.l1_head_hash.is_zero() {
-        error!("invalid l1_head_hash",);
-        return Err("invalid l1_head_hash");
-    }
-    if payload.l2_block_number == 0 {
+    if payload.claimed == 0 {
         error!("invalid l2_block_number",);
-        return Err("invalid l2_block_number");
+        return Err("invalid claimed l2_block_number");
+    }
+    if payload.agreed >= payload.claimed {
+        error!("invalid agreed l2_block_number",);
+        return Err("invalid agreed l2_block_number");
     }
     Ok(())
+}
+
+
+async fn get_latest_metadata(
+    State(state): State<Arc<SharedState>>,
+) -> (StatusCode, Json<Option<PreimageMetadata>>) {
+    let result = state.preimage_repository.latest_metadata().await;
+    match result {
+        Some(metadata) => {
+            (StatusCode::OK, Json(Some(metadata)))
+        }
+        None => {
+            info!("failed to get latest metadata",);
+            (StatusCode::NOT_FOUND, Json(None))
+        }
+    }
+}
+
+#[derive(Debug, Clone, Deserialize, Serialize)]
+pub struct ListMetadataFromRequest {
+   pub gt_claimed: u64,
+}
+
+async fn list_metadata_from(
+    State(state): State<Arc<SharedState>>,
+    Json(payload): Json<ListMetadataFromRequest>,
+) -> (StatusCode, Json<Vec<PreimageMetadata>>) {
+
+    if payload.gt_claimed == 0 {
+        error!("invalid gt_claimed",);
+        return (StatusCode::BAD_REQUEST, Json(vec![]));
+    }
+
+    let result = state.preimage_repository.list_metadata(Some(payload.gt_claimed)).await;
+    match result {
+        Ok(metadata) => {
+            (StatusCode::OK, Json(metadata))
+        }
+        Err(e) => {
+            info!("failed to list metadata from {}: {:?}", payload.gt_claimed, e);
+            (StatusCode::NOT_FOUND, Json(vec![]))
+        }
+    }
 }
