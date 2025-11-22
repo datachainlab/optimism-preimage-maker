@@ -9,10 +9,11 @@ use crate::derivation::host::single::handler::{Derivation, DerivationConfig, Der
 pub struct PreimageCollector<T: PreimageRepository> {
     pub client: Arc<L2Client>,
     pub config: Arc<DerivationConfig>,
-    pub initial_claimed: u64,
     pub preimage_repository: Arc<T>,
     pub max_distance: u64,
-    pub max_concurrency: usize
+    pub max_concurrency: usize,
+    pub initial_claimed: u64,
+    pub interval_seconds: u64,
 }
 
 impl <T: PreimageRepository> PreimageCollector<T> {
@@ -22,42 +23,49 @@ impl <T: PreimageRepository> PreimageCollector<T> {
             None => self.initial_claimed
         };
         loop {
-            tokio::time::sleep(std::time::Duration::from_secs(60)).await;
-
-            // Check sync status
-            let sync_status = self.client.sync_status().await;
-            let sync_status = match sync_status {
-                Ok(sync_status) => {
-                    info!("sync status: claimed_l2={}, next_claiming_l2={}, finalized_l1={}", latest_l2, sync_status.finalized_l2.number, sync_status.finalized_l1.number);
-                    if sync_status.finalized_l2.number <= latest_l2 {
-                        continue;
-                    }
-                    sync_status
-                }
-                Err(e) => {
-                    error!("Failed to get sync status {:?}", e);
-                    continue;
-                },
-            };
-
-            // Collect preimage from latest_l2 to finalized_l2
-            let pairs = split(latest_l2, sync_status.finalized_l2.number, self.max_distance);
-            let batches = pairs.chunks(self.max_concurrency.max(1));
-            info!("derivation length={}, batch-size={}, target={:?}", pairs.len(), batches.len(), batches);
-            for batch in batches {
-                let l1_head_hash = sync_status.finalized_l1.hash;
-                match self.batch_collect(l1_head_hash, batch.to_vec()).await {
-                    Ok(end) => latest_l2 = end.unwrap_or(latest_l2),
-                    Err(e) => {
-                        error!("Failed to collect preimage in current batch. try collect from {}: {:?}", latest_l2, e);
-                        break;
-                    }
-                }
+            if let Some(claimed) = self.collect(latest_l2).await {
+                latest_l2 = claimed;
             }
+            tokio::time::sleep(std::time::Duration::from_secs(self.interval_seconds)).await;
         }
     }
 
-    async fn batch_collect(&self, l1_head_hash: B256, batch: Vec<(u64, u64)>) -> anyhow::Result<Option<u64>> {
+    async fn collect(&self, latest_l2: u64) -> Option<u64> {
+        let mut latest_l2 = latest_l2;
+        // Check sync status
+        let sync_status = self.client.sync_status().await;
+        let sync_status = match sync_status {
+            Ok(sync_status) => {
+                info!("sync status: claimed_l2={}, next_claiming_l2={}, finalized_l1={}", latest_l2, sync_status.finalized_l2.number, sync_status.finalized_l1.number);
+                if sync_status.finalized_l2.number <= latest_l2 {
+                    return None;
+                }
+                sync_status
+            }
+            Err(e) => {
+                error!("Failed to get sync status {:?}", e);
+                return None;
+            },
+        };
+
+        // Collect preimage from latest_l2 to finalized_l2
+        let pairs = split(latest_l2, sync_status.finalized_l2.number, self.max_distance);
+        let batches = pairs.chunks(self.max_concurrency.max(1));
+        info!("derivation length={}, batch-size={}, target={:?}", pairs.len(), batches.len(), batches);
+        for batch in batches {
+            let l1_head_hash = sync_status.finalized_l1.hash;
+            match self.parallel_collect(l1_head_hash, batch.to_vec()).await {
+                Ok(end) => latest_l2 = end.unwrap_or(latest_l2),
+                Err(e) => {
+                    error!("Failed to collect preimage in current batch. try collect from {}: {:?}", latest_l2, e);
+                    break;
+                }
+            }
+        }
+        Some(latest_l2)
+    }
+
+    async fn parallel_collect(&self, l1_head_hash: B256, batch: Vec<(u64, u64)>) -> anyhow::Result<Option<u64>> {
         let mut tasks = vec![];
 
         // Spawn tasks to collect preimages

@@ -43,11 +43,16 @@ pub struct Config {
     #[clap(long, default_value = "100")]
     pub max_preimage_distance: u64,
 
+    /// Max concurrency of preimage collector.
+    #[clap(long, default_value = "10")]
+    pub max_collect_concurrency: u64,
+
     /// Initial claimed l2 block number that is used when no preimage is created.
     #[clap(long)]
     pub initial_claimed_l2: u64,
-   
-    /// Max concurrency of preimage collector.
-    #[clap(long, default_value = "10")]
-    pub max_collect_concurrency: u64
+
+    /// Interval seconds between preimage collection.
+    #[clap(long, default_value = "60")]
+    pub collection_interval_seconds: u64
+
 }

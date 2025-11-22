@@ -1,12 +1,9 @@
-use std::fmt::format;
-use std::sync::{Arc, RwLock};
 use alloy_primitives::B256;
 use alloy_primitives::hex::FromHex;
 use axum::async_trait;
 use serde::{Deserialize, Serialize};
-use tokio::fs;
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct PreimageMetadata {
     pub agreed: u64,
     pub claimed: u64,

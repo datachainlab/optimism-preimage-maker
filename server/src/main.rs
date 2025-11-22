@@ -72,6 +72,7 @@ async fn main() -> anyhow::Result<()> {
         config: Arc::new(derivation_config),
         max_distance: config.max_preimage_distance,
         initial_claimed: config.initial_claimed_l2,
+        interval_seconds: config.collection_interval_seconds,
         preimage_repository: preimage_repository.clone(),
         max_concurrency: config.max_collect_concurrency as usize,
     };
