@@ -1,6 +1,5 @@
 use alloy_primitives::B256;
 use tokio::select;
-use tokio_util::sync::CancellationToken;
 use tracing::{error, info, metadata};
 use crate::client::l2_client::{L2Client};
 use crate::data::preimage_repository::{PreimageMetadata, PreimageRepository};
@@ -15,52 +14,48 @@ pub struct PreimageCollector<T: PreimageRepository> {
 }
 
 impl <T: PreimageRepository> PreimageCollector<T> {
-    pub async fn start(&self, ctx: CancellationToken) {
+    pub async fn start(&self) {
 
         let mut latest_l2: u64 = match self.preimage_repository.latest_metadata().await {
             Some(metadata) => metadata.claimed,
             None => self.initial_claimed
         };
         loop {
-            select! {
-                 _ = ctx.cancelled() => break,
-                _ = tokio::time::sleep(std::time::Duration::from_secs(60)) => {
+            tokio::time::sleep(std::time::Duration::from_secs(60)).await;
 
-                    // Check sync status
-                    let sync_status = self.client.sync_status().await;
-                    let sync_status = match sync_status {
-                        Ok(sync_status) => {
-                            info!("sync status: claimed_l2={}, next_claiming_l2={}, finalized_l1={}", latest_l2, sync_status.finalized_l2.number, sync_status.finalized_l1.number);
-                            if sync_status.finalized_l2.number <= latest_l2 {
-                                continue;
-                            }
-                            sync_status
-                        }
-                        Err(e) => {
-                            error!("Failed to get sync status {:?}", e);
-                            continue;
-                        },
-                    };
-
-                    // Collect preimage from latest_l2 to finalized_l2
-                    let pairs = split(latest_l2, sync_status.finalized_l2.number, self.chunk);
-                    info!("derivation length={}, target={:?}", pairs.len(), pairs);
-                    for (start, end) in pairs {
-                        match self.collect(sync_status.finalized_l1.hash, start, end).await {
-                            Ok(_) =>  {
-                                info!("saving preimage success, claimed_l2={end}");
-                                latest_l2 = end;
-                            },
-                            Err(e) => {
-                                error!("Failed to collect preimage {:?}", e);
-                                // restart from latest_l2
-                                break;
-                            }
-                        }
+            // Check sync status
+            let sync_status = self.client.sync_status().await;
+            let sync_status = match sync_status {
+                Ok(sync_status) => {
+                    info!("sync status: claimed_l2={}, next_claiming_l2={}, finalized_l1={}", latest_l2, sync_status.finalized_l2.number, sync_status.finalized_l1.number);
+                    if sync_status.finalized_l2.number <= latest_l2 {
+                        continue;
                     }
-                 }
-             }
-        }
+                    sync_status
+                }
+                Err(e) => {
+                    error!("Failed to get sync status {:?}", e);
+                    continue;
+                },
+            };
+
+            // Collect preimage from latest_l2 to finalized_l2
+            let pairs = split(latest_l2, sync_status.finalized_l2.number, self.chunk);
+            info!("derivation length={}, target={:?}", pairs.len(), pairs);
+            for (start, end) in pairs {
+                match self.collect(sync_status.finalized_l1.hash, start, end).await {
+                    Ok(_) =>  {
+                        info!("saving preimage success, claimed_l2={end}");
+                        latest_l2 = end;
+                    },
+                    Err(e) => {
+                        error!("Failed to collect preimage {:?}", e);
+                        // restart from latest_l2
+                        break;
+                    }
+                }
+            }
+         }
     }
 
 

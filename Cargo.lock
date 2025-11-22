@@ -4059,7 +4059,6 @@ dependencies = [
  "serde_json",
  "serial_test",
  "tokio",
- "tokio-util",
  "tracing",
  "tracing-subscriber 0.3.20",
 ]

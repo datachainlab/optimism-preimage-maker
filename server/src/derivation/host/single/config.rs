@@ -35,8 +35,15 @@ pub struct Config {
     #[clap(long)]
     pub l1_chain_config: Option<String>,
 
-    /// Optional: Use Local file preimage directory if specified.
-    /// Make sure that the disk space is enough.
+    /// preimage directory if specified. (ex. .preimage)
+    #[clap(long, default_value = ".preimage")]
+    pub preimage_dir: String,
+
+    /// Max preimage distance ( from agreed to claimed) per one call
+    #[clap(long, default_value = "100")]
+    pub max_preimage_distance: u64,
+
+    /// Initial claimed l2 block number that is used when no preimage is created.
     #[clap(long)]
-    pub local_preimage_dir: Option<String>,
+    pub initial_claimed_l2: u64
 }

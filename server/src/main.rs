@@ -5,7 +5,6 @@ use base64::Engine;
 use clap::Parser;
 use kona_registry::ROLLUP_CONFIGS;
 use tokio::{select, try_join};
-use tokio_util::sync::CancellationToken;
 use crate::client::l2_client::L2Client;
 use tracing::info;
 use tracing_subscriber::filter;
@@ -64,19 +63,17 @@ async fn main() -> anyhow::Result<()> {
         l2_chain_id: chain_id,
     };
 
-    // Start preimage collector TODO directory
-    let preimage_repository = FilePreimageRepository::new(".preimage").await?;
+    // Start preimage collector
+    let preimage_repository = FilePreimageRepository::new(&config.preimage_dir).await?;
     let collector = PreimageCollector {
         client: l2_client,
         config: derivation_config.clone(),
-        chunk: 100,
-        initial_claimed: 200,
+        chunk: config.max_preimage_distance,
+        initial_claimed: config.initial_claimed_l2,
         preimage_repository,
     };
-    let ctx = CancellationToken::new();
-    let ctx_for_collector = ctx.clone();
     let collector_task = tokio::spawn(async move {
-        collector.start(ctx_for_collector).await;
+        collector.start().await;
     });
 
     // Start HTTP server
