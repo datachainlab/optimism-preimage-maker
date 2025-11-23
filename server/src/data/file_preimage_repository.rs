@@ -1,5 +1,4 @@
 use std::sync::{Arc, RwLock};
-use anyhow::Context;
 use axum::async_trait;
 use tokio::fs;
 use tracing::{error, info};
@@ -13,7 +12,7 @@ pub struct FilePreimageRepository {
 
 impl FilePreimageRepository {
     pub async fn new(parent_dir: &str) -> anyhow::Result<Self> {
-        let metadata_list = Self::load_metadata(&parent_dir).await?;
+        let metadata_list = Self::load_metadata(parent_dir).await?;
         info!("loaded metadata: {:?}", metadata_list.len());
         Ok(Self {
             dir: parent_dir.to_string(),
@@ -26,7 +25,7 @@ impl FilePreimageRepository {
         let mut metadata_list = vec![];
 
         let mut entries = fs::read_dir(dir).await.map_err(|e | {
-            anyhow::anyhow!("failed to read dir: {:?}, error={}", dir, e)
+            anyhow::anyhow!("failed to read dir: {dir:?}, error={e}")
         })?;
         while let Some(entry) = entries.next_entry().await? {
             match entry.file_name().to_str() {
@@ -47,7 +46,7 @@ impl FilePreimageRepository {
     }
 
     fn path(&self,metadata: &PreimageMetadata) -> String {
-        format!("{}/{}_{}_{}", self.dir, metadata.agreed, metadata.claimed, metadata.l1_head.to_string())
+        format!("{}/{}_{}_{}", self.dir, metadata.agreed, metadata.claimed, metadata.l1_head)
     }
 }
 
@@ -62,7 +61,7 @@ impl PreimageRepository for FilePreimageRepository {
         Ok(())
     }
     async fn get(&self, metadata: &PreimageMetadata) -> anyhow::Result<Vec<u8>> {
-        let path =  self.path(&metadata);
+        let path =  self.path(metadata);
         let preimage = fs::read(&path).await?;
         Ok(preimage)
     }
@@ -98,7 +97,7 @@ mod tests {
             .unwrap()
             .as_nanos();
         let pid = std::process::id();
-        dir.push(format!("optimism_preimage_maker_test_{}_{}_{}", pid, ts, suffix));
+        dir.push(format!("optimism_preimage_maker_test_{pid}_{ts}_{suffix}"));
         std::fs::create_dir_all(&dir).expect("create temp dir");
         dir.to_string_lossy().to_string()
     }
@@ -182,8 +181,8 @@ mod tests {
         let m1 = make_meta(10, 11, h1);
         let m2 = make_meta(12, 13, h2);
 
-        let f1 = format!("{}_{}_{}", m1.agreed, m1.claimed, m1.l1_head.to_string());
-        let f2 = format!("{}_{}_{}", m2.agreed, m2.claimed, m2.l1_head.to_string());
+        let f1 = format!("{}_{}_{}", m1.agreed, m1.claimed, m1.l1_head);
+        let f2 = format!("{}_{}_{}", m2.agreed, m2.claimed, m2.l1_head);
         let mut p1 = PathBuf::from(&dir); p1.push(&f1);
         let mut p2 = PathBuf::from(&dir); p2.push(&f2);
 

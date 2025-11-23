@@ -1,7 +1,6 @@
 use std::sync::Arc;
 use alloy_primitives::B256;
-use tokio::select;
-use tracing::{error, info, metadata};
+use tracing::{error, info};
 use crate::client::l2_client::{L2Client};
 use crate::data::preimage_repository::{PreimageMetadata, PreimageRepository};
 use crate::derivation::host::single::handler::{Derivation, DerivationConfig, DerivationRequest};

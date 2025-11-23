@@ -16,7 +16,7 @@ impl TryFrom<&str> for PreimageMetadata {
     fn try_from(name: &str) -> Result<Self, Self::Error> {
         let split = name.split("_").collect::<Vec<&str>>();
         if split.len() != 3 {
-            return anyhow::bail!("invalid preimage name: {}", name);
+            return anyhow::bail!("invalid preimage name: {name}");
         }
         let agreed_l2 : u64 = split[0].parse()?;
         let claimed_l2: u64 = split[1].parse()?;

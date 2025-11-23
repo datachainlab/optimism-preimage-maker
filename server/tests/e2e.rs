@@ -54,7 +54,7 @@ async fn test_derivation_success() {
     let chain_id = l2_client.chain_id().await.unwrap();
     for metadata in metadata_list {
         tracing::info!("metadata: {:?}", metadata);
-        let preimage_bytes = client.post("http://localhost:10080/get_preimage").json(&metadata).send().await.unwrap();;
+        let preimage_bytes = client.post("http://localhost:10080/get_preimage").json(&metadata).send().await.unwrap();
         assert_eq!(preimage_bytes.status(), 200);
         let preimage_bytes = preimage_bytes.bytes().await.unwrap();
         let preimages = Preimages::decode(preimage_bytes).unwrap();

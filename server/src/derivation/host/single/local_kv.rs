@@ -1,7 +1,7 @@
 //! Contains a concrete implementation of the [KeyValueStore] trait that stores data on disk,
 //! using the [SingleChainHostCli] config.
 
-use crate::derivation::host::single::handler::{Derivation, DerivationRequest};
+use crate::derivation::host::single::handler::Derivation;
 use alloy_primitives::B256;
 use anyhow::Result;
 use kona_host::KeyValueStore;

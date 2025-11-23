@@ -1,13 +1,9 @@
-use crate::derivation::host::single::config::Config;
-use crate::derivation::host::single::handler::{Derivation, DerivationConfig, DerivationRequest};
 use crate::data::preimage_repository::{PreimageMetadata, PreimageRepository};
-use alloy_primitives::B256;
 use anyhow::{Context, Result};
 use axum::extract::State;
 use axum::http::StatusCode;
 use axum::routing::post;
 use axum::Json;
-use kona_genesis::{L1ChainConfig, RollupConfig};
 use serde::{Deserialize, Serialize};
 use std::fmt::Debug;
 use std::sync::Arc;

@@ -1,3 +1,4 @@
+#![allow(dead_code)]
 use std::sync::Arc;
 use crate::derivation::host::single::config::Config;
 use crate::web::{start_http_server_task, };
@@ -5,7 +6,7 @@ use anyhow::Context;
 use base64::Engine;
 use clap::Parser;
 use kona_registry::ROLLUP_CONFIGS;
-use tokio::{select, try_join};
+use tokio::select;
 use crate::client::l2_client::L2Client;
 use tracing::info;
 use tracing_subscriber::filter;
