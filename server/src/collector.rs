@@ -141,3 +141,89 @@ fn split(agreed: u64, finalized: u64, chunk: u64) -> Vec<(u64, u64)> {
     }
     pairs
 }
+
+
+#[cfg(test)]
+mod tests {
+    use super::split;
+
+    fn assert_contiguous(pairs: &Vec<(u64, u64)>, agreed: u64, finalized: u64) {
+        if pairs.is_empty() {
+            assert!(agreed >= finalized || agreed == finalized, "empty implies agreed==finalized");
+            return;
+        }
+        assert_eq!(pairs.first().unwrap().0, agreed, "first start must equal agreed");
+        assert_eq!(pairs.last().unwrap().1, finalized, "last end must equal finalized");
+        for w in pairs.windows(2) {
+            let (s1, e1) = w[0];
+            let (s2, e2) = w[1];
+            assert!(s1 < e1, "each segment must be non-empty");
+            assert_eq!(e1, s2, "segments must be contiguous without gaps or overlaps");
+            assert!(e2 <= finalized);
+        }
+    }
+
+    #[test]
+    fn test_split_empty_range() {
+        let agreed = 10;
+        let finalized = 10;
+        let chunk = 5;
+        let pairs = split(agreed, finalized, chunk);
+        assert!(pairs.is_empty());
+    }
+
+    #[test]
+    fn test_split_single_chunk_when_chunk_bigger_than_range() {
+        let agreed = 5;
+        let finalized = 8; // range size = 3
+        let chunk = 10; // larger than range
+        let pairs = split(agreed, finalized, chunk);
+        assert_eq!(pairs, vec![(5, 8)]);
+        assert_contiguous(&pairs, agreed, finalized);
+    }
+
+    #[test]
+    fn test_split_exact_multiples() {
+        let agreed = 0;
+        let finalized = 10;
+        let chunk = 2;
+        let pairs = split(agreed, finalized, chunk);
+        assert_eq!(pairs, vec![(0,2),(2,4),(4,6),(6,8),(8,10)]);
+        assert_contiguous(&pairs, agreed, finalized);
+    }
+
+    #[test]
+    fn test_split_non_exact_final_chunk() {
+        let agreed = 3;
+        let finalized = 11; // range size = 8
+        let chunk = 4;
+        let pairs = split(agreed, finalized, chunk);
+        assert_eq!(pairs, vec![(3,7),(7,11)]);
+        assert_contiguous(&pairs, agreed, finalized);
+    }
+
+    #[test]
+    fn test_split_chunk_one() {
+        let agreed = 2;
+        let finalized = 5;
+        let chunk = 1;
+        let pairs = split(agreed, finalized, chunk);
+        assert_eq!(pairs, vec![(2,3),(3,4),(4,5)]);
+        assert_contiguous(&pairs, agreed, finalized);
+    }
+
+    #[test]
+    fn test_split_large_values() {
+        let agreed = u64::MAX - 9;
+        let finalized = u64::MAX;  // exclusive upper bound, so last pair should end here
+        let chunk = 3;
+        let pairs = split(agreed, finalized, chunk);
+        // expect: (MAX-9, MAX-6), (MAX-6, MAX-3), (MAX-3, MAX)
+        assert_eq!(pairs, vec![
+            (u64::MAX - 9, u64::MAX - 6),
+            (u64::MAX - 6, u64::MAX - 3),
+            (u64::MAX - 3, u64::MAX),
+        ]);
+        assert_contiguous(&pairs, agreed, finalized);
+    }
+}

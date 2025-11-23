@@ -83,3 +83,146 @@ impl PreimageRepository for FilePreimageRepository {
         result.pop()
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::FilePreimageRepository;
+    use crate::data::preimage_repository::{PreimageMetadata, PreimageRepository};
+    use alloy_primitives::B256;
+    use std::path::PathBuf;
+
+    fn unique_test_dir(suffix: &str) -> String {
+        let mut dir = std::env::temp_dir();
+        let ts = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_nanos();
+        let pid = std::process::id();
+        dir.push(format!("optimism_preimage_maker_test_{}_{}_{}", pid, ts, suffix));
+        std::fs::create_dir_all(&dir).expect("create temp dir");
+        dir.to_string_lossy().to_string()
+    }
+
+    fn make_meta(agreed: u64, claimed: u64, head: B256) -> PreimageMetadata {
+        PreimageMetadata { agreed, claimed, l1_head: head }
+    }
+
+    #[tokio::test]
+    async fn test_new_empty_dir() {
+        let dir = unique_test_dir("empty");
+        let repo = FilePreimageRepository::new(&dir).await.expect("repo new");
+        let list = repo.list_metadata(None).await;
+        assert!(list.is_empty());
+        let latest = repo.latest_metadata().await;
+        assert!(latest.is_none());
+        tokio::fs::remove_dir_all(dir).await.ok();
+    }
+
+    #[tokio::test]
+    async fn test_upsert_and_get_and_latest() {
+        let dir = unique_test_dir("upsert");
+        let repo = FilePreimageRepository::new(&dir).await.expect("repo new");
+
+        let h = B256::from([1u8; 32]);
+        let m1 = make_meta(1, 2, h);
+        let m2 = make_meta(2, 3, h);
+
+        let p1 = b"hello".to_vec();
+        let p2 = b"world".to_vec();
+
+        repo.upsert(m1.clone(), p1.clone()).await.expect("upsert m1");
+        repo.upsert(m2.clone(), p2.clone()).await.expect("upsert m2");
+
+        let got1 = repo.get(&m1).await.expect("get m1");
+        assert_eq!(got1, p1);
+        let got2 = repo.get(&m2).await.expect("get m2");
+        assert_eq!(got2, p2);
+
+        // list should be sorted by agreed ascending
+        let list = repo.list_metadata(None).await;
+        assert_eq!(list, vec![m1.clone(), m2.clone()]);
+
+        // latest should be the last after sorting (m2)
+        let latest = repo.latest_metadata().await;
+        assert_eq!(latest, Some(m2.clone()));
+
+        tokio::fs::remove_dir_all(dir).await.ok();
+    }
+
+    #[tokio::test]
+    async fn test_list_metadata_filter_and_sort() {
+        let dir = unique_test_dir("filter");
+        let repo = FilePreimageRepository::new(&dir).await.expect("repo new");
+        let h = B256::from([2u8; 32]);
+        let m_a = make_meta(5, 6, h);
+        let m_b = make_meta(1, 2, h);
+        let m_c = make_meta(3, 4, h);
+
+        repo.upsert(m_a.clone(), vec![10]).await.unwrap();
+        repo.upsert(m_b.clone(), vec![20]).await.unwrap();
+        repo.upsert(m_c.clone(), vec![30]).await.unwrap();
+
+        let all = repo.list_metadata(None).await;
+        assert_eq!(all, vec![m_b.clone(), m_c.clone(), m_a.clone()]);
+
+        // filter by claimed > x
+        let filtered = repo.list_metadata(Some(2)).await; // claimed > 2 => m_c(4), m_a(6)
+        assert_eq!(filtered, vec![m_c.clone(), m_a.clone()]);
+
+        tokio::fs::remove_dir_all(dir).await.ok();
+    }
+
+    #[tokio::test]
+    async fn test_load_existing_files() {
+        let dir = unique_test_dir("load");
+
+        // Pre-create files with valid names and contents
+        let h1 = B256::from([3u8; 32]);
+        let h2 = B256::from([4u8; 32]);
+        let m1 = make_meta(10, 11, h1);
+        let m2 = make_meta(12, 13, h2);
+
+        let f1 = format!("{}_{}_{}", m1.agreed, m1.claimed, m1.l1_head.to_string());
+        let f2 = format!("{}_{}_{}", m2.agreed, m2.claimed, m2.l1_head.to_string());
+        let mut p1 = PathBuf::from(&dir); p1.push(&f1);
+        let mut p2 = PathBuf::from(&dir); p2.push(&f2);
+
+        tokio::fs::write(&p1, b"alpha").await.unwrap();
+        tokio::fs::write(&p2, b"beta").await.unwrap();
+        // invalid file should be ignored
+        let mut junk = PathBuf::from(&dir); junk.push("invalid_name.txt");
+        tokio::fs::write(&junk, b"junk").await.unwrap();
+
+        let repo = FilePreimageRepository::new(&dir).await.expect("repo new");
+
+        let list = repo.list_metadata(None).await;
+        // Should be sorted by agreed
+        assert_eq!(list, vec![m1.clone(), m2.clone()]);
+
+        let g1 = repo.get(&m1).await.unwrap();
+        assert_eq!(g1, b"alpha");
+        let g2 = repo.get(&m2).await.unwrap();
+        assert_eq!(g2, b"beta");
+
+        tokio::fs::remove_dir_all(dir).await.ok();
+    }
+
+    #[tokio::test]
+    async fn test_overwrite_same_metadata_replaces_file() {
+        let dir = unique_test_dir("overwrite");
+        let repo = FilePreimageRepository::new(&dir).await.expect("repo new");
+        let h = B256::from([5u8; 32]);
+        let m = make_meta(7, 8, h);
+
+        repo.upsert(m.clone(), b"v1".to_vec()).await.unwrap();
+        let got = repo.get(&m).await.unwrap();
+        assert_eq!(got, b"v1".to_vec());
+
+        // overwrite
+        repo.upsert(m.clone(), b"v2".to_vec()).await.unwrap();
+        let got2 = repo.get(&m).await.unwrap();
+        assert_eq!(got2, b"v2".to_vec());
+
+        tokio::fs::remove_dir_all(dir).await.ok();
+    }
+}
