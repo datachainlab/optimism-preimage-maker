@@ -52,9 +52,7 @@ async fn get_preimage(
 
     let result = state.preimage_repository.get(&payload).await;
     match result {
-        Ok(preimage) => {
-            (StatusCode::OK, preimage)
-        }
+        Ok(preimage) => (StatusCode::OK, preimage),
         Err(e) => {
             info!("failed to get preimage: {:?}", e);
             (StatusCode::INTERNAL_SERVER_ERROR, vec![])
@@ -78,15 +76,12 @@ fn validate_get_preimage_request(payload: &GetPreimageRequest) -> Result<(), &'s
     Ok(())
 }
 
-
 async fn get_latest_metadata(
     State(state): State<Arc<SharedState>>,
 ) -> (StatusCode, Json<Option<PreimageMetadata>>) {
     let result = state.preimage_repository.latest_metadata().await;
     match result {
-        Some(metadata) => {
-            (StatusCode::OK, Json(Some(metadata)))
-        }
+        Some(metadata) => (StatusCode::OK, Json(Some(metadata))),
         None => {
             info!("failed to get latest metadata",);
             (StatusCode::NOT_FOUND, Json(None))
@@ -96,19 +91,21 @@ async fn get_latest_metadata(
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct ListMetadataFromRequest {
-   pub gt_claimed: u64,
+    pub gt_claimed: u64,
 }
 
 async fn list_metadata_from(
     State(state): State<Arc<SharedState>>,
     Json(payload): Json<ListMetadataFromRequest>,
 ) -> (StatusCode, Json<Vec<PreimageMetadata>>) {
-
     if payload.gt_claimed == 0 {
         error!("invalid gt_claimed",);
         return (StatusCode::BAD_REQUEST, Json(vec![]));
     }
 
-    let result = state.preimage_repository.list_metadata(Some(payload.gt_claimed)).await;
+    let result = state
+        .preimage_repository
+        .list_metadata(Some(payload.gt_claimed))
+        .await;
     (StatusCode::OK, Json(result))
 }

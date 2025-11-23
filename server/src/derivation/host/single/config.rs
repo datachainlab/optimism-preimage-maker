@@ -53,6 +53,5 @@ pub struct Config {
 
     /// Interval seconds between preimage collection.
     #[clap(long, default_value = "60")]
-    pub collection_interval_seconds: u64
-
+    pub collection_interval_seconds: u64,
 }

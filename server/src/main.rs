@@ -1,27 +1,27 @@
 #![allow(dead_code)]
-use std::sync::Arc;
+use crate::client::l2_client::L2Client;
+use crate::collector::PreimageCollector;
+use crate::data::file_preimage_repository::FilePreimageRepository;
 use crate::derivation::host::single::config::Config;
-use crate::web::{start_http_server_task, };
+use crate::derivation::host::single::handler::DerivationConfig;
+use crate::web::start_http_server_task;
+use crate::web::SharedState;
 use anyhow::Context;
 use base64::Engine;
 use clap::Parser;
 use kona_registry::ROLLUP_CONFIGS;
+use std::sync::Arc;
 use tokio::select;
-use crate::client::l2_client::L2Client;
 use tracing::info;
 use tracing_subscriber::filter;
 use tracing_subscriber::layer::SubscriberExt;
 use tracing_subscriber::util::SubscriberInitExt;
-use crate::web::SharedState;
-use crate::collector::PreimageCollector;
-use crate::data::file_preimage_repository::FilePreimageRepository;
-use crate::derivation::host::single::handler::DerivationConfig;
 
 mod client;
-mod web;
 mod collector;
-mod derivation;
 mod data;
+mod derivation;
+mod web;
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
@@ -85,8 +85,8 @@ async fn main() -> anyhow::Result<()> {
     let http_server_task = start_http_server_task(
         config.http_server_addr.as_str(),
         SharedState {
-           preimage_repository
-        }
+            preimage_repository,
+        },
     );
 
     // Wait for signal

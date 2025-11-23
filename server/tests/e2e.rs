@@ -2,14 +2,14 @@ use optimism_derivation::derivation::Derivation;
 use optimism_derivation::oracle::MemoryOracleClient;
 use optimism_derivation::types::Preimages;
 use optimism_preimage_maker::client::l2_client::L2Client;
+use optimism_preimage_maker::data::preimage_repository::PreimageMetadata;
+use optimism_preimage_maker::web::ListMetadataFromRequest;
 use prost::Message;
 use serial_test::serial;
 use std::env;
 use tracing_subscriber::filter;
 use tracing_subscriber::layer::SubscriberExt;
 use tracing_subscriber::util::SubscriberInitExt;
-use optimism_preimage_maker::data::preimage_repository::PreimageMetadata;
-use optimism_preimage_maker::web::ListMetadataFromRequest;
 
 fn init() {
     let filter = filter::EnvFilter::from_default_env().add_directive("e2e=info".parse().unwrap());
@@ -36,25 +36,35 @@ async fn test_derivation_success() {
     let l2_client = get_l2_client();
 
     let client = reqwest::Client::new();
-    let latest_metadata= client.post("http://localhost:10080/get_latest_metadata").send().await.unwrap();
+    let latest_metadata = client
+        .post("http://localhost:10080/get_latest_metadata")
+        .send()
+        .await
+        .unwrap();
     assert_eq!(latest_metadata.status(), 200);
-    let latest_metadata : Option<PreimageMetadata> = latest_metadata.json().await.unwrap();
+    let latest_metadata: Option<PreimageMetadata> = latest_metadata.json().await.unwrap();
     let latest_metadata = latest_metadata.unwrap();
 
-    let metadata_list= client.post("http://localhost:10080/list_metadata_from").json(
-        &ListMetadataFromRequest {
-            gt_claimed: 103,
-        }
-    ).send().await.unwrap();
+    let metadata_list = client
+        .post("http://localhost:10080/list_metadata_from")
+        .json(&ListMetadataFromRequest { gt_claimed: 103 })
+        .send()
+        .await
+        .unwrap();
     assert_eq!(metadata_list.status(), 200);
 
-    let metadata_list =  metadata_list.json::<Vec<PreimageMetadata>>().await.unwrap();
+    let metadata_list = metadata_list.json::<Vec<PreimageMetadata>>().await.unwrap();
     assert_eq!(metadata_list.last().unwrap(), &latest_metadata);
 
     let chain_id = l2_client.chain_id().await.unwrap();
     for metadata in metadata_list {
         tracing::info!("metadata: {:?}", metadata);
-        let preimage_bytes = client.post("http://localhost:10080/get_preimage").json(&metadata).send().await.unwrap();
+        let preimage_bytes = client
+            .post("http://localhost:10080/get_preimage")
+            .json(&metadata)
+            .send()
+            .await
+            .unwrap();
         assert_eq!(preimage_bytes.status(), 200);
         let preimage_bytes = preimage_bytes.bytes().await.unwrap();
         let preimages = Preimages::decode(preimage_bytes).unwrap();

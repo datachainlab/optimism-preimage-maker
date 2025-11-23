@@ -1,13 +1,13 @@
-use std::sync::{Arc, RwLock};
+use crate::data::preimage_repository::{PreimageMetadata, PreimageRepository};
 use axum::async_trait;
+use std::sync::{Arc, RwLock};
 use tokio::fs;
 use tracing::{error, info};
-use crate::data::preimage_repository::{PreimageMetadata, PreimageRepository};
 
 #[derive(Clone)]
 pub struct FilePreimageRepository {
     dir: String,
-    metadata_list: Arc<RwLock<Vec<PreimageMetadata>>>
+    metadata_list: Arc<RwLock<Vec<PreimageMetadata>>>,
 }
 
 impl FilePreimageRepository {
@@ -16,17 +16,16 @@ impl FilePreimageRepository {
         info!("loaded metadata: {:?}", metadata_list.len());
         Ok(Self {
             dir: parent_dir.to_string(),
-            metadata_list: Arc::new(RwLock::new(metadata_list))
+            metadata_list: Arc::new(RwLock::new(metadata_list)),
         })
     }
 
     async fn load_metadata(dir: &str) -> anyhow::Result<Vec<PreimageMetadata>> {
-
         let mut metadata_list = vec![];
 
-        let mut entries = fs::read_dir(dir).await.map_err(|e | {
-            anyhow::anyhow!("failed to read dir: {dir:?}, error={e}")
-        })?;
+        let mut entries = fs::read_dir(dir)
+            .await
+            .map_err(|e| anyhow::anyhow!("failed to read dir: {dir:?}, error={e}"))?;
         while let Some(entry) = entries.next_entry().await? {
             match entry.file_name().to_str() {
                 None => continue,
@@ -35,18 +34,24 @@ impl FilePreimageRepository {
                     match metadata {
                         Err(e) => {
                             error!("failed to parse metadata: {:?}, error={}", name, e);
-                        },
-                        Ok(_) => metadata_list.push(metadata.unwrap())
+                        }
+                        Ok(_) => metadata_list.push(metadata.unwrap()),
                     }
                 }
             }
         }
-        metadata_list.sort_by(|a, b| a.agreed.cmp(&b.agreed));
+        Self::sort(&mut metadata_list);
         Ok(metadata_list)
     }
 
-    fn path(&self,metadata: &PreimageMetadata) -> String {
-        format!("{}/{}_{}_{}", self.dir, metadata.agreed, metadata.claimed, metadata.l1_head)
+    fn path(&self, metadata: &PreimageMetadata) -> String {
+        format!(
+            "{}/{}_{}_{}",
+            self.dir, metadata.agreed, metadata.claimed, metadata.l1_head
+        )
+    }
+    fn sort(metadata_list: &mut [PreimageMetadata]) {
+        metadata_list.sort_by(|a, b| a.claimed.cmp(&b.claimed));
     }
 }
 
@@ -56,12 +61,12 @@ impl PreimageRepository for FilePreimageRepository {
         let path = self.path(&metadata);
         fs::write(&path, preimage).await?;
         // NOTE: Process should be restarted when locking is failed to avoid dirty metadata.
-        let mut lock = self.metadata_list.write().unwrap();;
+        let mut lock = self.metadata_list.write().unwrap();
         lock.push(metadata);
         Ok(())
     }
     async fn get(&self, metadata: &PreimageMetadata) -> anyhow::Result<Vec<u8>> {
-        let path =  self.path(metadata);
+        let path = self.path(metadata);
         let preimage = fs::read(&path).await?;
         Ok(preimage)
     }
@@ -70,10 +75,10 @@ impl PreimageRepository for FilePreimageRepository {
             let lock = self.metadata_list.read().unwrap();
             lock.clone()
         };
-         raw.sort_by(|a, b| a.agreed.cmp(&b.agreed));
+        Self::sort(&mut raw);
         match gt_claimed {
             None => raw,
-            Some(gt_claimed) => raw.into_iter().filter(|m| m.claimed > gt_claimed).collect()
+            Some(gt_claimed) => raw.into_iter().filter(|m| m.claimed > gt_claimed).collect(),
         }
     }
 
@@ -103,7 +108,11 @@ mod tests {
     }
 
     fn make_meta(agreed: u64, claimed: u64, head: B256) -> PreimageMetadata {
-        PreimageMetadata { agreed, claimed, l1_head: head }
+        PreimageMetadata {
+            agreed,
+            claimed,
+            l1_head: head,
+        }
     }
 
     #[tokio::test]
@@ -129,8 +138,12 @@ mod tests {
         let p1 = b"hello".to_vec();
         let p2 = b"world".to_vec();
 
-        repo.upsert(m1.clone(), p1.clone()).await.expect("upsert m1");
-        repo.upsert(m2.clone(), p2.clone()).await.expect("upsert m2");
+        repo.upsert(m1.clone(), p1.clone())
+            .await
+            .expect("upsert m1");
+        repo.upsert(m2.clone(), p2.clone())
+            .await
+            .expect("upsert m2");
 
         let got1 = repo.get(&m1).await.expect("get m1");
         assert_eq!(got1, p1);
@@ -183,13 +196,16 @@ mod tests {
 
         let f1 = format!("{}_{}_{}", m1.agreed, m1.claimed, m1.l1_head);
         let f2 = format!("{}_{}_{}", m2.agreed, m2.claimed, m2.l1_head);
-        let mut p1 = PathBuf::from(&dir); p1.push(&f1);
-        let mut p2 = PathBuf::from(&dir); p2.push(&f2);
+        let mut p1 = PathBuf::from(&dir);
+        p1.push(&f1);
+        let mut p2 = PathBuf::from(&dir);
+        p2.push(&f2);
 
         tokio::fs::write(&p1, b"alpha").await.unwrap();
         tokio::fs::write(&p2, b"beta").await.unwrap();
         // invalid file should be ignored
-        let mut junk = PathBuf::from(&dir); junk.push("invalid_name.txt");
+        let mut junk = PathBuf::from(&dir);
+        junk.push("invalid_name.txt");
         tokio::fs::write(&junk, b"junk").await.unwrap();
 
         let repo = FilePreimageRepository::new(&dir).await.expect("repo new");

@@ -1,9 +1,9 @@
-use std::sync::Arc;
-use alloy_primitives::B256;
-use tracing::{error, info};
-use crate::client::l2_client::{L2Client};
+use crate::client::l2_client::L2Client;
 use crate::data::preimage_repository::{PreimageMetadata, PreimageRepository};
 use crate::derivation::host::single::handler::{Derivation, DerivationConfig, DerivationRequest};
+use alloy_primitives::B256;
+use std::sync::Arc;
+use tracing::{error, info};
 
 pub struct PreimageCollector<T: PreimageRepository> {
     pub client: Arc<L2Client>,
@@ -15,11 +15,11 @@ pub struct PreimageCollector<T: PreimageRepository> {
     pub interval_seconds: u64,
 }
 
-impl <T: PreimageRepository> PreimageCollector<T> {
+impl<T: PreimageRepository> PreimageCollector<T> {
     pub async fn start(&self) {
         let mut latest_l2: u64 = match self.preimage_repository.latest_metadata().await {
             Some(metadata) => metadata.claimed,
-            None => self.initial_claimed
+            None => self.initial_claimed,
         };
         loop {
             if let Some(claimed) = self.collect(latest_l2).await {
@@ -35,7 +35,10 @@ impl <T: PreimageRepository> PreimageCollector<T> {
         let sync_status = self.client.sync_status().await;
         let sync_status = match sync_status {
             Ok(sync_status) => {
-                info!("sync status: claimed_l2={}, next_claiming_l2={}, finalized_l1={}", latest_l2, sync_status.finalized_l2.number, sync_status.finalized_l1.number);
+                info!(
+                    "sync status: claimed_l2={}, next_claiming_l2={}, finalized_l1={}",
+                    latest_l2, sync_status.finalized_l2.number, sync_status.finalized_l1.number
+                );
                 if sync_status.finalized_l2.number <= latest_l2 {
                     return None;
                 }
@@ -44,19 +47,31 @@ impl <T: PreimageRepository> PreimageCollector<T> {
             Err(e) => {
                 error!("Failed to get sync status {:?}", e);
                 return None;
-            },
+            }
         };
 
         // Collect preimage from latest_l2 to finalized_l2
-        let pairs = split(latest_l2, sync_status.finalized_l2.number, self.max_distance);
+        let pairs = split(
+            latest_l2,
+            sync_status.finalized_l2.number,
+            self.max_distance,
+        );
         let batches = pairs.chunks(self.max_concurrency.max(1));
-        info!("derivation length={}, batch-size={}, target={:?}", pairs.len(), batches.len(), batches);
+        info!(
+            "derivation length={}, batch-size={}, target={:?}",
+            pairs.len(),
+            batches.len(),
+            batches
+        );
         for batch in batches {
             let l1_head_hash = sync_status.finalized_l1.hash;
             match self.parallel_collect(l1_head_hash, batch.to_vec()).await {
                 Ok(end) => latest_l2 = end.unwrap_or(latest_l2),
                 Err(e) => {
-                    error!("Failed to collect preimage in current batch. try collect from {}: {:?}", latest_l2, e);
+                    error!(
+                        "Failed to collect preimage in current batch. try collect from {}: {:?}",
+                        latest_l2, e
+                    );
                     break;
                 }
             }
@@ -64,7 +79,11 @@ impl <T: PreimageRepository> PreimageCollector<T> {
         Some(latest_l2)
     }
 
-    async fn parallel_collect(&self, l1_head_hash: B256, batch: Vec<(u64, u64)>) -> anyhow::Result<Option<u64>> {
+    async fn parallel_collect(
+        &self,
+        l1_head_hash: B256,
+        batch: Vec<(u64, u64)>,
+    ) -> anyhow::Result<Option<u64>> {
         let mut tasks = vec![];
 
         // Spawn tasks to collect preimages
@@ -94,11 +113,15 @@ impl <T: PreimageRepository> PreimageCollector<T> {
         }
         Ok(latest_l2)
     }
-
 }
 
-
-async fn collect(client: Arc<L2Client>, config: Arc<DerivationConfig>, l1_head_hash: B256, start: u64, end: u64) -> anyhow::Result<(PreimageMetadata, Vec<u8>)> {
+async fn collect(
+    client: Arc<L2Client>,
+    config: Arc<DerivationConfig>,
+    l1_head_hash: B256,
+    start: u64,
+    end: u64,
+) -> anyhow::Result<(PreimageMetadata, Vec<u8>)> {
     let agreed_block = client.output_root_at(start).await?;
     let claiming_block = client.output_root_at(end).await?;
 
@@ -111,24 +134,24 @@ async fn collect(client: Arc<L2Client>, config: Arc<DerivationConfig>, l1_head_h
     };
 
     info!("derivation start : {:?}", &request);
-    let derivation = Derivation {
-        config,
-        request,
+    let derivation = Derivation { config, request };
+    let metadata = PreimageMetadata {
+        agreed: start,
+        claimed: end,
+        l1_head: l1_head_hash,
     };
-    let metadata = PreimageMetadata { agreed: start, claimed: end, l1_head: l1_head_hash };
     let result = derivation.start().await;
     match result {
-       Ok(preimage) => {
-           info!("derivation success : {metadata:?}");
-           Ok((metadata, preimage))
-       },
+        Ok(preimage) => {
+            info!("derivation success : {metadata:?}");
+            Ok((metadata, preimage))
+        }
         Err(e) => {
-           error!("derivation failed : {metadata:?}, error={}", e);
-           Err(e)
+            error!("derivation failed : {metadata:?}, error={}", e);
+            Err(e)
         }
     }
 }
-
 
 fn split(agreed: u64, finalized: u64, chunk: u64) -> Vec<(u64, u64)> {
     let mut pairs: Vec<(u64, u64)> = Vec::new();
@@ -141,23 +164,36 @@ fn split(agreed: u64, finalized: u64, chunk: u64) -> Vec<(u64, u64)> {
     pairs
 }
 
-
 #[cfg(test)]
 mod tests {
     use super::split;
 
-    fn assert_contiguous(pairs: &Vec<(u64, u64)>, agreed: u64, finalized: u64) {
+    fn assert_contiguous(pairs: &[(u64, u64)], agreed: u64, finalized: u64) {
         if pairs.is_empty() {
-            assert!(agreed >= finalized || agreed == finalized, "empty implies agreed==finalized");
+            assert!(
+                agreed >= finalized || agreed == finalized,
+                "empty implies agreed==finalized"
+            );
             return;
         }
-        assert_eq!(pairs.first().unwrap().0, agreed, "first start must equal agreed");
-        assert_eq!(pairs.last().unwrap().1, finalized, "last end must equal finalized");
+        assert_eq!(
+            pairs.first().unwrap().0,
+            agreed,
+            "first start must equal agreed"
+        );
+        assert_eq!(
+            pairs.last().unwrap().1,
+            finalized,
+            "last end must equal finalized"
+        );
         for w in pairs.windows(2) {
             let (s1, e1) = w[0];
             let (s2, e2) = w[1];
             assert!(s1 < e1, "each segment must be non-empty");
-            assert_eq!(e1, s2, "segments must be contiguous without gaps or overlaps");
+            assert_eq!(
+                e1, s2,
+                "segments must be contiguous without gaps or overlaps"
+            );
             assert!(e2 <= finalized);
         }
     }
@@ -187,7 +223,7 @@ mod tests {
         let finalized = 10;
         let chunk = 2;
         let pairs = split(agreed, finalized, chunk);
-        assert_eq!(pairs, vec![(0,2),(2,4),(4,6),(6,8),(8,10)]);
+        assert_eq!(pairs, vec![(0, 2), (2, 4), (4, 6), (6, 8), (8, 10)]);
         assert_contiguous(&pairs, agreed, finalized);
     }
 
@@ -197,7 +233,7 @@ mod tests {
         let finalized = 11; // range size = 8
         let chunk = 4;
         let pairs = split(agreed, finalized, chunk);
-        assert_eq!(pairs, vec![(3,7),(7,11)]);
+        assert_eq!(pairs, vec![(3, 7), (7, 11)]);
         assert_contiguous(&pairs, agreed, finalized);
     }
 
@@ -207,22 +243,25 @@ mod tests {
         let finalized = 5;
         let chunk = 1;
         let pairs = split(agreed, finalized, chunk);
-        assert_eq!(pairs, vec![(2,3),(3,4),(4,5)]);
+        assert_eq!(pairs, vec![(2, 3), (3, 4), (4, 5)]);
         assert_contiguous(&pairs, agreed, finalized);
     }
 
     #[test]
     fn test_split_large_values() {
         let agreed = u64::MAX - 9;
-        let finalized = u64::MAX;  // exclusive upper bound, so last pair should end here
+        let finalized = u64::MAX; // exclusive upper bound, so last pair should end here
         let chunk = 3;
         let pairs = split(agreed, finalized, chunk);
         // expect: (MAX-9, MAX-6), (MAX-6, MAX-3), (MAX-3, MAX)
-        assert_eq!(pairs, vec![
-            (u64::MAX - 9, u64::MAX - 6),
-            (u64::MAX - 6, u64::MAX - 3),
-            (u64::MAX - 3, u64::MAX),
-        ]);
+        assert_eq!(
+            pairs,
+            vec![
+                (u64::MAX - 9, u64::MAX - 6),
+                (u64::MAX - 6, u64::MAX - 3),
+                (u64::MAX - 3, u64::MAX),
+            ]
+        );
         assert_contiguous(&pairs, agreed, finalized);
     }
 }

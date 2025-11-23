@@ -31,7 +31,9 @@ impl KeyValueStore for LocalKeyValueStore {
             L1_HEAD_KEY => Some(self.cfg.request.l1_head_hash.to_vec()),
             L2_OUTPUT_ROOT_KEY => Some(self.cfg.request.agreed_l2_output_root.to_vec()),
             L2_CLAIM_KEY => Some(self.cfg.request.l2_output_root.to_vec()),
-            L2_CLAIM_BLOCK_NUMBER_KEY => Some(self.cfg.request.l2_block_number.to_be_bytes().to_vec()),
+            L2_CLAIM_BLOCK_NUMBER_KEY => {
+                Some(self.cfg.request.l2_block_number.to_be_bytes().to_vec())
+            }
             L2_CHAIN_ID_KEY => Some(self.cfg.config.l2_chain_id.to_be_bytes().to_vec()),
             L2_ROLLUP_CONFIG_KEY => match &self.cfg.config.rollup_config {
                 None => {
