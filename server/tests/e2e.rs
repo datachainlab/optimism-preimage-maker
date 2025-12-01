@@ -1,3 +1,4 @@
+use alloy_primitives::ChainId;
 use optimism_derivation::derivation::Derivation;
 use optimism_derivation::oracle::MemoryOracleClient;
 use optimism_derivation::types::Preimages;
@@ -57,13 +58,7 @@ async fn get_latest_derivation(l2_client: &L2Client) -> Request {
     }
 }
 
-#[serial]
-#[tokio::test(flavor = "multi_thread")]
-async fn test_make_preimages_success() {
-    init();
-    let l2_client = get_l2_client();
-
-    let request = get_latest_derivation(&l2_client).await;
+async fn success_derivation(request: Request, chain_id: ChainId) {
     tracing::info!("request: {:?}", request);
 
     let client = reqwest::Client::new();
@@ -83,7 +78,6 @@ async fn test_make_preimages_success() {
         request.l2_block_number,
     );
 
-    let chain_id = l2_client.chain_id().await.unwrap();
     let result = derivation.verify(chain_id, oracle);
     match result {
         Ok(h) => tracing::info!("Derivation verified successfully {:? }", h),
@@ -92,6 +86,30 @@ async fn test_make_preimages_success() {
             panic!("Derivation verification failed");
         }
     }
+}
+
+#[serial]
+#[tokio::test(flavor = "multi_thread")]
+async fn test_make_preimages_success() {
+    init();
+    let l2_client = get_l2_client();
+    let chain_id = l2_client.chain_id().await.unwrap();
+    let request = get_latest_derivation(&l2_client).await;
+    success_derivation(request, chain_id).await;
+}
+
+#[serial]
+#[tokio::test(flavor = "multi_thread")]
+#[ignore]
+async fn test_make_preimages_success_from_file() {
+    init();
+    let path = env::var("REQUEST_PATH").unwrap();
+    tracing::info!("reading request from file: {path}");
+    let request = std::fs::read_to_string(path).unwrap();
+    let request = serde_json::from_str::<Request>(&request).unwrap();
+    let l2_client = get_l2_client();
+    let chain_id = l2_client.chain_id().await.unwrap();
+    success_derivation(request, chain_id).await;
 }
 
 #[serial]
