@@ -2,7 +2,7 @@ SED = $(shell which gsed 2>/dev/null || echo sed)
 
 .PHONY: chain
 chain:
-	git clone --depth 1 -b v1.16.1 https://github.com/ethereum-optimism/optimism ./chain
+	git clone --depth 1 -b v1.16.2 https://github.com/ethereum-optimism/optimism ./chain
 	# override devnet config
 	cp kurtosis/kurtosis.yaml ./chain/kurtosis-devnet/optimism-package-trampoline/kurtosis.yml
 	cp kurtosis/main.star ./chain/kurtosis-devnet/optimism-package-trampoline/main.star
@@ -21,6 +21,10 @@ devnet-up:
 set-port:
 	scripts/port.sh
 	scripts/get_l1_config.sh
+
+.PHONY: set-port-fixed
+set-port-fixed:
+	echo "{\"l1BeaconPort\": 9596, \"l1GethPort\": 8545, \"l2RollupPort\": 9545, \"l2GethPort\": 8546}" | jq > hostPort.json
 
 .PHONY: status
 status:
@@ -50,6 +54,12 @@ test:
 	@L2_ROLLUP_PORT=$$(jq -r '.l2RollupPort' hostPort.json);\
 	L2_GETH_PORT=$$(jq -r '.l2GethPort' hostPort.json);\
 	L2_ROLLUP_PORT=$$L2_ROLLUP_PORT L2_GETH_PORT=$$L2_GETH_PORT cargo test --manifest-path=./server/Cargo.toml
+
+.PHONY: test-ignored
+test-ignored:
+	@L2_ROLLUP_PORT=$$(jq -r '.l2RollupPort' hostPort.json);\
+	L2_GETH_PORT=$$(jq -r '.l2GethPort' hostPort.json);\
+	REQUEST_PATH=$(CURDIR)/tool/body.json L2_ROLLUP_PORT=$$L2_ROLLUP_PORT L2_GETH_PORT=$$L2_GETH_PORT cargo test --manifest-path=./server/Cargo.toml -- --ignored
 
 .PHONY: devnet-down
 devnet-down:
