@@ -4011,7 +4011,7 @@ dependencies = [
 [[package]]
 name = "optimism-derivation"
 version = "0.1.1"
-source = "git+https://github.com/datachainlab/optimism-elc?rev=b6a4e78e0b0a8f279fef68ea8346f05ebd579ef3#b6a4e78e0b0a8f279fef68ea8346f05ebd579ef3"
+source = "git+https://github.com/datachainlab/optimism-elc?rev=v0.1.9#d0c57d91dd91d9adf28657b072a91fb2364406da"
 dependencies = [
  "alloy-consensus",
  "alloy-eips",
