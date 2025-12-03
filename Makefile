@@ -22,6 +22,10 @@ set-port:
 	scripts/port.sh
 	scripts/get_l1_config.sh
 
+.PHONY: set-port-fixed
+set-port-fixed:
+	echo "{\"l1BeaconPort\": 9596, \"l1GethPort\": 8545, \"l2RollupPort\": 9545, \"l2GethPort\": 8546}" | jq > hostPort.json
+
 .PHONY: status
 status:
 	@PORT=$$(jq -r '.l2RollupPort' hostPort.json);\
@@ -52,6 +56,12 @@ test:
 	@L2_ROLLUP_PORT=$$(jq -r '.l2RollupPort' hostPort.json);\
 	L2_GETH_PORT=$$(jq -r '.l2GethPort' hostPort.json);\
 	L2_ROLLUP_ADDR=http://localhost:$$L2_ROLLUP_PORT L2_GETH_ADDR=http://localhost:$$L2_GETH_PORT cargo test --manifest-path=./server/Cargo.toml
+
+.PHONY: test-ignored
+test-ignored:
+	@L2_ROLLUP_PORT=$$(jq -r '.l2RollupPort' hostPort.json);\
+	L2_GETH_PORT=$$(jq -r '.l2GethPort' hostPort.json);\
+	REQUEST_PATH=$(CURDIR)/tool/body.json L2_ROLLUP_PORT=$$L2_ROLLUP_PORT L2_GETH_PORT=$$L2_GETH_PORT cargo test --manifest-path=./server/Cargo.toml -- --ignored
 
 .PHONY: devnet-down
 devnet-down:

@@ -15,6 +15,7 @@ tracing = { version = "0.1", default-features = false }
 tracing-subscriber = { version = "0.3", features = ["fmt", "env-filter"] }
 axum = "0.7.9"
 tokio = { version="1.41", features=["full"] }
+base64 = "0.22.1"
 
 # Kona
 kona-client = { workspace = true }
@@ -28,8 +29,7 @@ kona-registry = { workspace = true }
 alloy-primitives = { workspace = true, features = ["map", "serde"] }
 
 # optimism derivation
-optimism-derivation = { git = "https://github.com/datachainlab/optimism-elc", rev = "0b972aac9afec9bc97aa9fa90a9bfb468df85ddd", default-features = false }
-base64 = "0.22.1"
+optimism-derivation = { git = "https://github.com/datachainlab/optimism-elc", rev = "v0.1.9", default-features = false }
 
 [dev-dependencies]
 prost = "0.11.9"
