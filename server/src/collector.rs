@@ -4,18 +4,22 @@ use crate::derivation::host::single::handler::{Derivation, DerivationConfig, Der
 use alloy_primitives::B256;
 use std::sync::Arc;
 use tracing::{error, info};
+use crate::client::beacon_client::{BeaconClient, LightClientFinalityUpdateResponse};
+use crate::data::finalized_l1_repository::FinalizedL1Repository;
 
-pub struct PreimageCollector<T: PreimageRepository> {
+pub struct PreimageCollector<T: PreimageRepository, F: FinalizedL1Repository> {
     pub client: Arc<L2Client>,
+    pub beacon_client: Arc<BeaconClient>,
     pub config: Arc<DerivationConfig>,
     pub preimage_repository: Arc<T>,
+    pub finalized_l1_repository: Arc<F>,
     pub max_distance: u64,
     pub max_concurrency: usize,
     pub initial_claimed: u64,
     pub interval_seconds: u64,
 }
 
-impl<T: PreimageRepository> PreimageCollector<T> {
+impl<T: PreimageRepository, F: FinalizedL1Repository> PreimageCollector<T, F> {
     pub async fn start(&self) {
         let mut latest_l2: u64 = match self.preimage_repository.latest_metadata().await {
             Some(metadata) => metadata.claimed,
@@ -36,7 +40,7 @@ impl<T: PreimageRepository> PreimageCollector<T> {
         let sync_status = match sync_status {
             Ok(sync_status) => {
                 info!(
-                    "sync status: claimed_l2={}, next_claiming_l2={}, finalized_l1={}",
+                    "sync status: claimed_l2={}, next_claiming_l2={}, sync_finalized_l1={}",
                     latest_l2, sync_status.finalized_l2.number, sync_status.finalized_l1.number
                 );
                 if sync_status.finalized_l2.number <= latest_l2 {
@@ -49,6 +53,23 @@ impl<T: PreimageRepository> PreimageCollector<T> {
                 return None;
             }
         };
+
+        let raw_finality_l1 = match self.beacon_client.get_raw_light_client_finality_update().await {
+            Ok(finality_l1) => finality_l1,
+            Err(e) => {
+                error!("Failed to get finality update from beacon client {:?}", e);
+                return None;
+            }
+        };
+        let finality_l1 : LightClientFinalityUpdateResponse = match serde_json::from_str(&raw_finality_l1) {
+            Ok(value) => value,
+            Err (e) => {
+                error!("Failed to get finality update from beacon client {:?}", e);
+                return None;
+            }
+        };
+        let l1_head_hash = finality_l1.data.finalized_header.execution.block_hash;
+        info!("l1_head for derivation = {:?}",finality_l1.data.finalized_header.execution.block_number);
 
         // Collect preimage from latest_l2 to finalized_l2
         let pairs = split(
@@ -63,9 +84,14 @@ impl<T: PreimageRepository> PreimageCollector<T> {
             batches.len(),
             batches
         );
+
+        // Save finalized_l1
+        if let Err(e) = self.finalized_l1_repository.upsert(&l1_head_hash, raw_finality_l1).await {
+            error!("Failed to save finalized l1 head hash to db l1_head={}, {:?}", l1_head_hash, e);
+        }
+
         for batch in batches {
-            let l1_head_hash = sync_status.finalized_l1.hash;
-            match self.parallel_collect(l1_head_hash, batch.to_vec()).await {
+            match self.parallel_collect(l1_head_hash.clone(), batch.to_vec()).await {
                 Ok(end) => latest_l2 = end.unwrap_or(latest_l2),
                 Err(e) => {
                     error!(
@@ -76,6 +102,7 @@ impl<T: PreimageRepository> PreimageCollector<T> {
                 }
             }
         }
+
         Some(latest_l2)
     }
 
@@ -101,6 +128,7 @@ impl<T: PreimageRepository> PreimageCollector<T> {
             results.push(task.await);
         }
 
+        // Commit
         let mut latest_l2 = None;
         for result in results {
             // preimage must be sequentially stored in db, so we can restart from latest_l2 when failed to save preimage.

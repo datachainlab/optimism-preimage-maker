@@ -70,20 +70,24 @@ impl PreimageRepository for FilePreimageRepository {
         let preimage = fs::read(&path).await?;
         Ok(preimage)
     }
-    async fn list_metadata(&self, gt_claimed: Option<u64>) -> Vec<PreimageMetadata> {
+    async fn list_metadata(&self, lt_claimed: Option<u64>, gt_claimed: Option<u64>) -> Vec<PreimageMetadata> {
         let mut raw = {
             let lock = self.metadata_list.read().unwrap();
             lock.clone()
         };
         Self::sort(&mut raw);
-        match gt_claimed {
+        let raw = match gt_claimed {
             None => raw,
             Some(gt_claimed) => raw.into_iter().filter(|m| m.claimed > gt_claimed).collect(),
+        };
+        match lt_claimed {
+            None => raw,
+            Some(lt_claimed) => raw.into_iter().filter(|m| m.claimed < lt_claimed).collect(),
         }
     }
 
     async fn latest_metadata(&self) -> Option<PreimageMetadata> {
-        let mut result = self.list_metadata(None).await;
+        let mut result = self.list_metadata(None, None).await;
         result.pop()
     }
 }
@@ -119,7 +123,7 @@ mod tests {
     async fn test_new_empty_dir() {
         let dir = unique_test_dir("empty");
         let repo = FilePreimageRepository::new(&dir).await.expect("repo new");
-        let list = repo.list_metadata(None).await;
+        let list = repo.list_metadata(None, None).await;
         assert!(list.is_empty());
         let latest = repo.latest_metadata().await;
         assert!(latest.is_none());
@@ -151,7 +155,7 @@ mod tests {
         assert_eq!(got2, p2);
 
         // list should be sorted by agreed ascending
-        let list = repo.list_metadata(None).await;
+        let list = repo.list_metadata(None, None).await;
         assert_eq!(list, vec![m1.clone(), m2.clone()]);
 
         // latest should be the last after sorting (m2)
@@ -174,12 +178,21 @@ mod tests {
         repo.upsert(m_b.clone(), vec![20]).await.unwrap();
         repo.upsert(m_c.clone(), vec![30]).await.unwrap();
 
-        let all = repo.list_metadata(None).await;
+        let all = repo.list_metadata(None, None).await;
         assert_eq!(all, vec![m_b.clone(), m_c.clone(), m_a.clone()]);
 
         // filter by claimed > x
-        let filtered = repo.list_metadata(Some(2)).await; // claimed > 2 => m_c(4), m_a(6)
+        let filtered = repo.list_metadata(None, Some(2)).await; // claimed > 2 => m_c(4), m_a(6)
         assert_eq!(filtered, vec![m_c.clone(), m_a.clone()]);
+
+        // filter by claimed < x
+        let filtered = repo.list_metadata(Some(4), None).await; // claimed < 2 => m_c(2)
+        assert_eq!(filtered, vec![m_b.clone()]);
+
+        // filter by lt < claimed < gt
+        let filtered = repo.list_metadata(Some(4), Some(7)).await; // 4 < claimed < 7 => m_c(6)
+        assert_eq!(filtered, vec![m_a.clone()]);
+
 
         tokio::fs::remove_dir_all(dir).await.ok();
     }
@@ -210,7 +223,7 @@ mod tests {
 
         let repo = FilePreimageRepository::new(&dir).await.expect("repo new");
 
-        let list = repo.list_metadata(None).await;
+        let list = repo.list_metadata(None, None).await;
         // Should be sorted by agreed
         assert_eq!(list, vec![m1.clone(), m2.clone()]);
 

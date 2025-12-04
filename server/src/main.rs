@@ -16,6 +16,8 @@ use tracing::info;
 use tracing_subscriber::filter;
 use tracing_subscriber::layer::SubscriberExt;
 use tracing_subscriber::util::SubscriberInitExt;
+use crate::client::beacon_client::BeaconClient;
+use crate::data::file_finalized_l1_repository::FileFinalizedL1Repository;
 
 mod client;
 mod collector;
@@ -34,11 +36,14 @@ async fn main() -> anyhow::Result<()> {
         .with(tracing_subscriber::fmt::layer())
         .with(filter)
         .init();
-    info!("start optimism preimage-maker");
+    info!("start optimism-preimage-maker");
 
     let l2_client = L2Client::new(
         config.l2_rollup_address.to_string(),
         config.l2_node_address.to_string(),
+    );
+    let beacon_client = BeaconClient::new(
+        config.l1_beacon_address.to_string(),
     );
     let chain_id = l2_client.chain_id().await?;
     let (rollup_config, l1_chain_config) = if ROLLUP_CONFIGS.get(&chain_id).is_none() {
@@ -68,13 +73,16 @@ async fn main() -> anyhow::Result<()> {
 
     // Start preimage collector
     let preimage_repository = Arc::new(FilePreimageRepository::new(&config.preimage_dir).await?);
+    let finalized_l1_repository = Arc::new(FileFinalizedL1Repository::new(&config.preimage_dir)?);
     let collector = PreimageCollector {
         client: Arc::new(l2_client),
+        beacon_client: Arc::new(beacon_client),
         config: Arc::new(derivation_config),
         max_distance: config.max_preimage_distance,
         initial_claimed: config.initial_claimed_l2,
         interval_seconds: config.collection_interval_seconds,
         preimage_repository: preimage_repository.clone(),
+        finalized_l1_repository: finalized_l1_repository.clone(),
         max_concurrency: config.max_collect_concurrency as usize,
     };
     let collector_task = tokio::spawn(async move {
@@ -86,6 +94,7 @@ async fn main() -> anyhow::Result<()> {
         config.http_server_addr.as_str(),
         SharedState {
             preimage_repository,
+            finalized_l1_repository,
         },
     );
 

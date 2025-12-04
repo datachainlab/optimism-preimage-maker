@@ -7,20 +7,24 @@ use axum::Json;
 use serde::{Deserialize, Serialize};
 use std::fmt::Debug;
 use std::sync::Arc;
+use alloy_primitives::B256;
 use tokio::net::TcpListener;
 use tokio::task::JoinHandle;
 use tracing::{error, info};
+use crate::data::finalized_l1_repository::FinalizedL1Repository;
 
 #[derive(Clone)]
 pub struct SharedState {
     pub preimage_repository: Arc<dyn PreimageRepository>,
+    pub finalized_l1_repository: Arc<dyn FinalizedL1Repository>,
 }
 
 async fn start_http_server(addr: &str, state: SharedState) -> Result<()> {
     let app = axum::Router::new()
         .route("/get_preimage", post(get_preimage))
         .route("/get_latest_metadata", post(get_latest_metadata))
-        .route("/list_metadata_from", post(list_metadata_from))
+        .route("/list_metadata", post(list_metadata))
+        .route("/get_finalized_l1", post(get_finalized_l1))
         .with_state(Arc::new(state));
 
     let listener = TcpListener::bind(addr).await?;
@@ -90,22 +94,54 @@ async fn get_latest_metadata(
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
-pub struct ListMetadataFromRequest {
+pub struct ListMetadataRequest {
+    pub lt_claimed: u64,
     pub gt_claimed: u64,
 }
 
-async fn list_metadata_from(
+async fn list_metadata(
     State(state): State<Arc<SharedState>>,
-    Json(payload): Json<ListMetadataFromRequest>,
+    Json(payload): Json<ListMetadataRequest>,
 ) -> (StatusCode, Json<Vec<PreimageMetadata>>) {
     if payload.gt_claimed == 0 {
         error!("invalid gt_claimed",);
         return (StatusCode::BAD_REQUEST, Json(vec![]));
     }
+    if payload.lt_claimed == 0 {
+        error!("invalid lt_claimed",);
+        return (StatusCode::BAD_REQUEST, Json(vec![]));
+    }
+    if payload.lt_claimed >= payload.gt_claimed {
+        error!("invalid lt_claimed {} >= gt_claimed {}", payload.lt_claimed, payload.gt_claimed,);
+        return (StatusCode::BAD_REQUEST, Json(vec![]));
+    }
 
     let result = state
         .preimage_repository
-        .list_metadata(Some(payload.gt_claimed))
+        .list_metadata(Some(payload.lt_claimed), Some(payload.gt_claimed))
         .await;
     (StatusCode::OK, Json(result))
+}
+
+
+#[derive(Debug, Clone, Deserialize, Serialize)]
+pub struct GetFinalizedL1Request {
+    pub l1_head_hash: B256,
+}
+
+async fn get_finalized_l1(
+    State(state): State<Arc<SharedState>>,
+    Json(payload): Json<GetFinalizedL1Request>,
+) -> (StatusCode, String) {
+    let result = state
+        .finalized_l1_repository
+        .get(&payload.l1_head_hash)
+        .await;
+    match result {
+        Ok(v) => (StatusCode::OK, v),
+        Err(e) => {
+            error!("failed to get finalized l1: {:?}", e);
+            (StatusCode::NOT_FOUND, "".to_string())
+        }
+    }
 }
