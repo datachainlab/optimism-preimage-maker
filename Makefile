@@ -38,6 +38,7 @@ wait:
 .PHONY: server-up
 server-up:
 	mkdir -p .preimage && true
+	mkdir -p .finalized_l1 && true
 	@L2_ROLLUP_PORT=$$(jq -r '.l2RollupPort' hostPort.json);\
 	L2_GETH_PORT=$$(jq -r '.l2GethPort' hostPort.json);\
 	L1_GETH_PORT=$$(jq -r '.l1GethPort' hostPort.json);\
@@ -49,7 +50,7 @@ server-up:
 		--l1=http://localhost:$$L1_GETH_PORT \
 		--beacon=http://localhost:$$L1_BEACON_PORT \
 		--l1-chain-config=$$L1_CHAIN_CONFIG \
-		--initial-claimed-l2=103
+		--initial-claimed-l2=1003
 
 .PHONY: test
 test:

@@ -3,6 +3,7 @@ use crate::data::preimage_repository::{PreimageMetadata, PreimageRepository};
 use crate::derivation::host::single::handler::{Derivation, DerivationConfig, DerivationRequest};
 use alloy_primitives::B256;
 use std::sync::Arc;
+use tokio::time;
 use tracing::{error, info};
 use crate::client::beacon_client::{BeaconClient, LightClientFinalityUpdateResponse};
 use crate::data::finalized_l1_repository::FinalizedL1Repository;
@@ -54,19 +55,29 @@ impl<T: PreimageRepository, F: FinalizedL1Repository> PreimageCollector<T, F> {
             }
         };
 
-        let raw_finality_l1 = match self.beacon_client.get_raw_light_client_finality_update().await {
-            Ok(finality_l1) => finality_l1,
-            Err(e) => {
-                error!("Failed to get finality update from beacon client {:?}", e);
-                return None;
+        let (finality_l1 ,raw_finality_l1) = loop {
+            let raw_finality_l1 = match self.beacon_client.get_raw_light_client_finality_update().await {
+                Ok(finality_l1) => finality_l1,
+                Err(e) => {
+                    error!("Failed to get finality update from beacon client {:?}", e);
+                    return None;
+                }
+            };
+            let finality_l1 : LightClientFinalityUpdateResponse = match serde_json::from_str(&raw_finality_l1) {
+                Ok(value) => value,
+                Err(e) => {
+                    error!("Failed to get finality update from beacon client {:?}", e);
+                    return None;
+                }
+            };
+            let block_number = finality_l1.data.finalized_header.execution.block_number;
+            if block_number < sync_status.finalized_l1.number {
+                info!("insufficient finality_l1 = {:?}", block_number);
+                time::sleep(std::time::Duration::from_secs(10)).await;
+                continue
             }
-        };
-        let finality_l1 : LightClientFinalityUpdateResponse = match serde_json::from_str(&raw_finality_l1) {
-            Ok(value) => value,
-            Err (e) => {
-                error!("Failed to get finality update from beacon client {:?}", e);
-                return None;
-            }
+            break (finality_l1, raw_finality_l1)
+
         };
         let l1_head_hash = finality_l1.data.finalized_header.execution.block_hash;
         info!("l1_head for derivation = {:?}",finality_l1.data.finalized_header.execution);

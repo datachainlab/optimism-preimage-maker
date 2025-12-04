@@ -111,8 +111,8 @@ async fn list_metadata(
         error!("invalid lt_claimed",);
         return (StatusCode::BAD_REQUEST, Json(vec![]));
     }
-    if payload.lt_claimed >= payload.gt_claimed {
-        error!("invalid lt_claimed {} >= gt_claimed {}", payload.lt_claimed, payload.gt_claimed,);
+    if payload.lt_claimed <= payload.gt_claimed {
+        error!("invalid lt_claimed {} <= gt_claimed {}", payload.lt_claimed, payload.gt_claimed,);
         return (StatusCode::BAD_REQUEST, Json(vec![]));
     }
 
@@ -140,7 +140,7 @@ async fn get_finalized_l1(
     match result {
         Ok(v) => (StatusCode::OK, v),
         Err(e) => {
-            error!("failed to get finalized l1: {:?}", e);
+            error!("failed to get finalized l1: {:?}, hash:{:?}", e, payload.l1_head_hash);
             (StatusCode::NOT_FOUND, "".to_string())
         }
     }

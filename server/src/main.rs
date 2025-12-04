@@ -77,7 +77,7 @@ async fn main() -> anyhow::Result<()> {
     // Start preimage collector
     let ttl = Duration::from_secs(config.ttl);
     let preimage_repository = Arc::new(FilePreimageRepository::new(&config.preimage_dir, ttl).await?);
-    let finalized_l1_repository = Arc::new(FileFinalizedL1Repository::new(&config.preimage_dir, ttl)?);
+    let finalized_l1_repository = Arc::new(FileFinalizedL1Repository::new(&config.finalized_l1_dir, ttl)?);
     let collector = PreimageCollector {
         client: Arc::new(l2_client),
         beacon_client: Arc::new(beacon_client),
