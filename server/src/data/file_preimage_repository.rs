@@ -1,28 +1,49 @@
 use crate::data::preimage_repository::{PreimageMetadata, PreimageRepository};
 use axum::async_trait;
 use std::sync::{Arc, RwLock};
+use std::time;
 use tokio::fs;
+use tokio::fs::DirEntry;
 use tracing::{error, info};
 
 #[derive(Clone)]
 pub struct FilePreimageRepository {
     dir: String,
     metadata_list: Arc<RwLock<Vec<PreimageMetadata>>>,
+    ttl: time::Duration
 }
 
 impl FilePreimageRepository {
-    pub async fn new(parent_dir: &str) -> anyhow::Result<Self> {
+    pub async fn new(parent_dir: &str, ttl: time::Duration) -> anyhow::Result<Self> {
         let metadata_list = Self::load_metadata(parent_dir).await?;
         info!("loaded metadata: {:?}", metadata_list.len());
         Ok(Self {
             dir: parent_dir.to_string(),
             metadata_list: Arc::new(RwLock::new(metadata_list)),
+            ttl,
         })
     }
 
     async fn load_metadata(dir: &str) -> anyhow::Result<Vec<PreimageMetadata>> {
         let mut metadata_list = vec![];
 
+        let entries = Self::entries(dir).await?;
+        for entry in entries {
+            let name = entry.file_name().to_str().unwrap().to_string();
+            let metadata = PreimageMetadata::try_from(name.as_str());
+            match metadata {
+                Err(e) => {
+                    error!("failed to parse metadata: {:?}, error={}", name, e);
+                }
+                Ok(metadata) => metadata_list.push(metadata),
+            }
+        }
+        Self::sort(&mut metadata_list);
+        Ok(metadata_list)
+    }
+
+    async fn entries(dir: &str) -> anyhow::Result<Vec<DirEntry>> {
+        let mut file_list = vec![];
         let mut entries = fs::read_dir(dir)
             .await
             .map_err(|e| anyhow::anyhow!("failed to read dir: {dir:?}, error={e}"))?;
@@ -30,18 +51,11 @@ impl FilePreimageRepository {
             match entry.file_name().to_str() {
                 None => continue,
                 Some(name) => {
-                    let metadata = PreimageMetadata::try_from(name);
-                    match metadata {
-                        Err(e) => {
-                            error!("failed to parse metadata: {:?}, error={}", name, e);
-                        }
-                        Ok(_) => metadata_list.push(metadata.unwrap()),
-                    }
+                    file_list.push(entry);
                 }
             }
         }
-        Self::sort(&mut metadata_list);
-        Ok(metadata_list)
+        Ok(file_list)
     }
 
     fn path(&self, metadata: &PreimageMetadata) -> String {
@@ -90,6 +104,40 @@ impl PreimageRepository for FilePreimageRepository {
         let mut result = self.list_metadata(None, None).await;
         result.pop()
     }
+
+    async fn purge_expired(&self) -> anyhow::Result<()> {
+        let now = time::SystemTime::now();
+        let mut target = vec![];
+        for entry in Self::entries(&self.dir).await? {
+            let metadata = entry.metadata().await?;
+            let created = metadata.created()?;
+            let expired = created.checked_add(self.ttl).ok_or_else(|| anyhow::anyhow!("expired preimage metadata is too new"))?;
+            if now >= expired {
+                target.push(entry);
+            }
+        }
+
+        // delete files from disk
+        let mut target_cached = vec![];
+        for entry in target {
+            let name = entry.file_name().to_str().unwrap().to_string();
+            tracing::info!("purging expired preimage metadata: {:?}", entry.path());
+            fs::remove_file(entry.path()).await?;
+            if let Ok(v) = PreimageMetadata::try_from(name.as_str()) {
+                target_cached.push(v);
+            }
+        }
+
+        // Remove from cache
+        {
+            let mut lock = self.metadata_list.write().unwrap();
+            for v in target_cached {
+                lock.retain(|m| m != &v);
+            }
+        }
+
+        Ok(())
+    }
 }
 
 #[cfg(test)]
@@ -98,6 +146,7 @@ mod tests {
     use crate::data::preimage_repository::{PreimageMetadata, PreimageRepository};
     use alloy_primitives::B256;
     use std::path::PathBuf;
+    use std::time::Duration;
 
     fn unique_test_dir(suffix: &str) -> String {
         let mut dir = std::env::temp_dir();
@@ -122,7 +171,7 @@ mod tests {
     #[tokio::test]
     async fn test_new_empty_dir() {
         let dir = unique_test_dir("empty");
-        let repo = FilePreimageRepository::new(&dir).await.expect("repo new");
+        let repo = FilePreimageRepository::new(&dir, Duration::from_secs(1)).await.expect("repo new");
         let list = repo.list_metadata(None, None).await;
         assert!(list.is_empty());
         let latest = repo.latest_metadata().await;
@@ -133,7 +182,7 @@ mod tests {
     #[tokio::test]
     async fn test_upsert_and_get_and_latest() {
         let dir = unique_test_dir("upsert");
-        let repo = FilePreimageRepository::new(&dir).await.expect("repo new");
+        let repo = FilePreimageRepository::new(&dir, Duration::from_secs(1)).await.expect("repo new");
 
         let h = B256::from([1u8; 32]);
         let m1 = make_meta(1, 2, h);
@@ -168,7 +217,7 @@ mod tests {
     #[tokio::test]
     async fn test_list_metadata_filter_and_sort() {
         let dir = unique_test_dir("filter");
-        let repo = FilePreimageRepository::new(&dir).await.expect("repo new");
+        let repo = FilePreimageRepository::new(&dir, Duration::from_secs(1)).await.expect("repo new");
         let h = B256::from([2u8; 32]);
         let m_a = make_meta(5, 6, h);
         let m_b = make_meta(1, 2, h);
@@ -221,7 +270,7 @@ mod tests {
         junk.push("invalid_name.txt");
         tokio::fs::write(&junk, b"junk").await.unwrap();
 
-        let repo = FilePreimageRepository::new(&dir).await.expect("repo new");
+        let repo = FilePreimageRepository::new(&dir, Duration::from_secs(1)).await.expect("repo new");
 
         let list = repo.list_metadata(None, None).await;
         // Should be sorted by agreed
@@ -238,7 +287,7 @@ mod tests {
     #[tokio::test]
     async fn test_overwrite_same_metadata_replaces_file() {
         let dir = unique_test_dir("overwrite");
-        let repo = FilePreimageRepository::new(&dir).await.expect("repo new");
+        let repo = FilePreimageRepository::new(&dir, Duration::from_secs(1)).await.expect("repo new");
         let h = B256::from([5u8; 32]);
         let m = make_meta(7, 8, h);
 

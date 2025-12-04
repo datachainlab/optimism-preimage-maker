@@ -69,7 +69,7 @@ impl<T: PreimageRepository, F: FinalizedL1Repository> PreimageCollector<T, F> {
             }
         };
         let l1_head_hash = finality_l1.data.finalized_header.execution.block_hash;
-        info!("l1_head for derivation = {:?}",finality_l1.data.finalized_header.execution.block_number);
+        info!("l1_head for derivation = {:?}",finality_l1.data.finalized_header.execution);
 
         // Collect preimage from latest_l2 to finalized_l2
         let pairs = split(

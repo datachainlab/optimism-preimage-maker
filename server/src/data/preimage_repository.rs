@@ -38,6 +38,8 @@ pub trait PreimageRepository: Send + Sync {
     async fn list_metadata(&self, lt_claimed: Option<u64>, gt_claimed: Option<u64>) -> Vec<PreimageMetadata>;
 
     async fn latest_metadata(&self) -> Option<PreimageMetadata>;
+
+    async fn purge_expired(&self) -> anyhow::Result<()>;
 }
 
 #[cfg(test)]
