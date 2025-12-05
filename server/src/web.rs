@@ -87,7 +87,7 @@ async fn get_latest_metadata(
     match result {
         Some(metadata) => (StatusCode::OK, Json(Some(metadata))),
         None => {
-            info!("failed to get latest metadata",);
+            error!("failed to get latest metadata",);
             (StatusCode::NOT_FOUND, Json(None))
         }
     }

@@ -50,7 +50,9 @@ server-up:
 		--l1=http://localhost:$$L1_GETH_PORT \
 		--beacon=http://localhost:$$L1_BEACON_PORT \
 		--l1-chain-config=$$L1_CHAIN_CONFIG \
-		--initial-claimed-l2=1003
+		--initial-claimed-l2=103 \
+		--ttl=1800 \
+        --purger-interval-seconds=100
 
 .PHONY: test
 test:

@@ -75,6 +75,7 @@ async fn main() -> anyhow::Result<()> {
     };
 
     // Start preimage collector
+    info!("purging ttl = {} sec", config.ttl);
     let ttl = Duration::from_secs(config.ttl);
     let preimage_repository = Arc::new(FilePreimageRepository::new(&config.preimage_dir, ttl).await?);
     let finalized_l1_repository = Arc::new(FileFinalizedL1Repository::new(&config.finalized_l1_dir, ttl)?);

@@ -1,7 +1,5 @@
-use std::fmt::format;
 use alloy_primitives::B256;
 use reqwest::Response;
-use serde::Deserialize;
 
 #[derive(Debug, Clone)]
 pub struct BeaconClient {

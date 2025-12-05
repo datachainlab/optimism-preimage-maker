@@ -31,7 +31,7 @@ impl FileFinalizedL1Repository {
         while let Some(entry) = entries.next_entry().await? {
             match entry.file_name().to_str() {
                 None => continue,
-                Some(name) => {
+                Some(_) => {
                     file_list.push(entry);
                 }
             }

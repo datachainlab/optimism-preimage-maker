@@ -50,7 +50,7 @@ impl FilePreimageRepository {
         while let Some(entry) = entries.next_entry().await? {
             match entry.file_name().to_str() {
                 None => continue,
-                Some(name) => {
+                Some(_) => {
                     file_list.push(entry);
                 }
             }
@@ -116,12 +116,12 @@ impl PreimageRepository for FilePreimageRepository {
                 target.push(entry);
             }
         }
+        info!("purging expired preimage metadata: {:?}", target.len());
 
         // delete files from disk
         let mut target_cached = vec![];
         for entry in target {
             let name = entry.file_name().to_str().unwrap().to_string();
-            tracing::info!("purging expired preimage metadata: {:?}", entry.path());
             fs::remove_file(entry.path()).await?;
             if let Ok(v) = PreimageMetadata::try_from(name.as_str()) {
                 target_cached.push(v);

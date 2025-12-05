@@ -41,8 +41,8 @@ impl<T: PreimageRepository, F: FinalizedL1Repository> PreimageCollector<T, F> {
         let sync_status = match sync_status {
             Ok(sync_status) => {
                 info!(
-                    "sync status: claimed_l2={}, next_claiming_l2={}, sync_finalized_l1={}",
-                    latest_l2, sync_status.finalized_l2.number, sync_status.finalized_l1.number
+                    "sync status: claimed_l2={}, next_claiming_l2={}, sync_finalized_l1={}, processed_l2={}",
+                    latest_l2, sync_status.finalized_l2.number, sync_status.finalized_l1.number, latest_l2
                 );
                 if sync_status.finalized_l2.number <= latest_l2 {
                     return None;
