@@ -8,24 +8,24 @@ pub struct BeaconClient {
 
 #[derive(Debug, Clone, serde::Deserialize)]
 pub struct LightClientFinalityUpdateResponse {
-    pub data: LightClientFinalityUpdate
+    pub data: LightClientFinalityUpdate,
 }
 
 #[derive(Debug, Clone, serde::Deserialize)]
 pub struct LightClientFinalityUpdate {
-    pub finalized_header: LightClientHeader
+    pub finalized_header: LightClientHeader,
 }
 
 #[derive(Debug, Clone, serde::Deserialize)]
 pub struct LightClientHeader {
-    pub execution: ExecutionPayloadHeader
+    pub execution: ExecutionPayloadHeader,
 }
 
 #[derive(Debug, Clone, serde::Deserialize)]
 pub struct ExecutionPayloadHeader {
     pub block_hash: B256,
     #[serde(deserialize_with = "deserialize_u64_from_str")]
-    pub block_number: u64
+    pub block_number: u64,
 }
 
 // serde helper to allow numbers encoded as strings
@@ -60,7 +60,8 @@ where
         where
             E: serde::de::Error,
         {
-            v.parse::<u64>().map_err(|e| E::custom(format!("invalid u64 string: {}", e)))
+            v.parse::<u64>()
+                .map_err(|e| E::custom(format!("invalid u64 string: {}", e)))
         }
 
         fn visit_string<E>(self, v: String) -> Result<Self::Value, E>
@@ -82,11 +83,17 @@ impl BeaconClient {
     pub async fn get_raw_light_client_finality_update(&self) -> anyhow::Result<String> {
         let client = reqwest::Client::new();
         let response = client
-            .get(&format!("{}/eth/v1/beacon/light_client/finality_update", self.beacon_addr))
+            .get(&format!(
+                "{}/eth/v1/beacon/light_client/finality_update",
+                self.beacon_addr
+            ))
             .send()
             .await?;
         let response = self.check_response(response).await?;
-        response.text().await.map_err(|e| anyhow::anyhow!("Failed to get finality update: {:?}", e))
+        response
+            .text()
+            .await
+            .map_err(|e| anyhow::anyhow!("Failed to get finality update: {:?}", e))
     }
 
     async fn check_response(&self, response: Response) -> anyhow::Result<Response> {

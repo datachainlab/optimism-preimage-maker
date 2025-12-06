@@ -58,10 +58,10 @@ pub struct Config {
     /// Interval seconds between preimage collection.
     #[clap(long, default_value = "60")]
     pub collector_interval_seconds: u64,
-    
+
     #[clap(long, default_value = "86400")]
     pub purger_interval_seconds: u64,
-   
+
     /// TTL in seconds. default 7 days
     #[clap(long, default_value = "604800")]
     pub ttl: u64,

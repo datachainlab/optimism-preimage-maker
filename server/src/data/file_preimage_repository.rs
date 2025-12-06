@@ -10,7 +10,7 @@ use tracing::{error, info};
 pub struct FilePreimageRepository {
     dir: String,
     metadata_list: Arc<RwLock<Vec<PreimageMetadata>>>,
-    ttl: time::Duration
+    ttl: time::Duration,
 }
 
 impl FilePreimageRepository {
@@ -84,7 +84,11 @@ impl PreimageRepository for FilePreimageRepository {
         let preimage = fs::read(&path).await?;
         Ok(preimage)
     }
-    async fn list_metadata(&self, lt_claimed: Option<u64>, gt_claimed: Option<u64>) -> Vec<PreimageMetadata> {
+    async fn list_metadata(
+        &self,
+        lt_claimed: Option<u64>,
+        gt_claimed: Option<u64>,
+    ) -> Vec<PreimageMetadata> {
         let mut raw = {
             let lock = self.metadata_list.read().unwrap();
             lock.clone()
@@ -111,7 +115,9 @@ impl PreimageRepository for FilePreimageRepository {
         for entry in Self::entries(&self.dir).await? {
             let metadata = entry.metadata().await?;
             let created = metadata.created()?;
-            let expired = created.checked_add(self.ttl).ok_or_else(|| anyhow::anyhow!("expired preimage metadata is too new"))?;
+            let expired = created
+                .checked_add(self.ttl)
+                .ok_or_else(|| anyhow::anyhow!("expired preimage metadata is too new"))?;
             if now >= expired {
                 target.push(entry);
             }
@@ -171,7 +177,9 @@ mod tests {
     #[tokio::test]
     async fn test_new_empty_dir() {
         let dir = unique_test_dir("empty");
-        let repo = FilePreimageRepository::new(&dir, Duration::from_secs(1)).await.expect("repo new");
+        let repo = FilePreimageRepository::new(&dir, Duration::from_secs(1))
+            .await
+            .expect("repo new");
         let list = repo.list_metadata(None, None).await;
         assert!(list.is_empty());
         let latest = repo.latest_metadata().await;
@@ -182,7 +190,9 @@ mod tests {
     #[tokio::test]
     async fn test_upsert_and_get_and_latest() {
         let dir = unique_test_dir("upsert");
-        let repo = FilePreimageRepository::new(&dir, Duration::from_secs(1)).await.expect("repo new");
+        let repo = FilePreimageRepository::new(&dir, Duration::from_secs(1))
+            .await
+            .expect("repo new");
 
         let h = B256::from([1u8; 32]);
         let m1 = make_meta(1, 2, h);
@@ -217,7 +227,9 @@ mod tests {
     #[tokio::test]
     async fn test_list_metadata_filter_and_sort() {
         let dir = unique_test_dir("filter");
-        let repo = FilePreimageRepository::new(&dir, Duration::from_secs(1)).await.expect("repo new");
+        let repo = FilePreimageRepository::new(&dir, Duration::from_secs(1))
+            .await
+            .expect("repo new");
         let h = B256::from([2u8; 32]);
         let m_a = make_meta(5, 6, h);
         let m_b = make_meta(1, 2, h);
@@ -238,10 +250,9 @@ mod tests {
         let filtered = repo.list_metadata(Some(4), None).await; // claimed < 2 => m_c(2)
         assert_eq!(filtered, vec![m_b.clone()]);
 
-        // filter by lt < claimed < gt
-        let filtered = repo.list_metadata(Some(4), Some(7)).await; // 4 < claimed < 7 => m_c(6)
+        // filter by gt < claimed < lt
+        let filtered = repo.list_metadata(Some(7), Some(4)).await; // 4 < claimed < 7 => m_c(6)
         assert_eq!(filtered, vec![m_a.clone()]);
-
 
         tokio::fs::remove_dir_all(dir).await.ok();
     }
@@ -270,7 +281,9 @@ mod tests {
         junk.push("invalid_name.txt");
         tokio::fs::write(&junk, b"junk").await.unwrap();
 
-        let repo = FilePreimageRepository::new(&dir, Duration::from_secs(1)).await.expect("repo new");
+        let repo = FilePreimageRepository::new(&dir, Duration::from_secs(1))
+            .await
+            .expect("repo new");
 
         let list = repo.list_metadata(None, None).await;
         // Should be sorted by agreed
@@ -287,7 +300,9 @@ mod tests {
     #[tokio::test]
     async fn test_overwrite_same_metadata_replaces_file() {
         let dir = unique_test_dir("overwrite");
-        let repo = FilePreimageRepository::new(&dir, Duration::from_secs(1)).await.expect("repo new");
+        let repo = FilePreimageRepository::new(&dir, Duration::from_secs(1))
+            .await
+            .expect("repo new");
         let h = B256::from([5u8; 32]);
         let m = make_meta(7, 8, h);
 

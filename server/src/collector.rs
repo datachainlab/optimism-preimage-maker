@@ -1,12 +1,12 @@
+use crate::client::beacon_client::{BeaconClient, LightClientFinalityUpdateResponse};
 use crate::client::l2_client::L2Client;
+use crate::data::finalized_l1_repository::FinalizedL1Repository;
 use crate::data::preimage_repository::{PreimageMetadata, PreimageRepository};
 use crate::derivation::host::single::handler::{Derivation, DerivationConfig, DerivationRequest};
 use alloy_primitives::B256;
 use std::sync::Arc;
 use tokio::time;
 use tracing::{error, info, warn};
-use crate::client::beacon_client::{BeaconClient, LightClientFinalityUpdateResponse};
-use crate::data::finalized_l1_repository::FinalizedL1Repository;
 
 pub struct PreimageCollector<T: PreimageRepository, F: FinalizedL1Repository> {
     pub client: Arc<L2Client>,
@@ -55,32 +55,39 @@ impl<T: PreimageRepository, F: FinalizedL1Repository> PreimageCollector<T, F> {
             }
         };
 
-        let (finality_l1 ,raw_finality_l1) = loop {
-            let raw_finality_l1 = match self.beacon_client.get_raw_light_client_finality_update().await {
+        let (finality_l1, raw_finality_l1) = loop {
+            let raw_finality_l1 = match self
+                .beacon_client
+                .get_raw_light_client_finality_update()
+                .await
+            {
                 Ok(finality_l1) => finality_l1,
                 Err(e) => {
                     error!("Failed to get finality update from beacon client {:?}", e);
                     return None;
                 }
             };
-            let finality_l1 : LightClientFinalityUpdateResponse = match serde_json::from_str(&raw_finality_l1) {
-                Ok(value) => value,
-                Err(e) => {
-                    error!("Failed to get finality update from beacon client {:?}", e);
-                    return None;
-                }
-            };
+            let finality_l1: LightClientFinalityUpdateResponse =
+                match serde_json::from_str(&raw_finality_l1) {
+                    Ok(value) => value,
+                    Err(e) => {
+                        error!("Failed to get finality update from beacon client {:?}", e);
+                        return None;
+                    }
+                };
             let block_number = finality_l1.data.finalized_header.execution.block_number;
             if block_number < sync_status.finalized_l1.number {
                 warn!("finality_l1 = {:?} delayed.", block_number);
                 time::sleep(time::Duration::from_secs(10)).await;
-                continue
+                continue;
             }
-            break (finality_l1, raw_finality_l1)
-
+            break (finality_l1, raw_finality_l1);
         };
         let l1_head_hash = finality_l1.data.finalized_header.execution.block_hash;
-        info!("l1_head for derivation = {:?}",finality_l1.data.finalized_header.execution);
+        info!(
+            "l1_head for derivation = {:?}",
+            finality_l1.data.finalized_header.execution
+        );
 
         // Collect preimage from latest_l2 to finalized_l2
         let pairs = split(
@@ -97,12 +104,22 @@ impl<T: PreimageRepository, F: FinalizedL1Repository> PreimageCollector<T, F> {
         );
 
         // Save finalized_l1
-        if let Err(e) = self.finalized_l1_repository.upsert(&l1_head_hash, raw_finality_l1).await {
-            error!("Failed to save finalized l1 head hash to db l1_head={}, {:?}", l1_head_hash, e);
+        if let Err(e) = self
+            .finalized_l1_repository
+            .upsert(&l1_head_hash, raw_finality_l1)
+            .await
+        {
+            error!(
+                "Failed to save finalized l1 head hash to db l1_head={}, {:?}",
+                l1_head_hash, e
+            );
         }
 
         for batch in batches {
-            match self.parallel_collect(l1_head_hash.clone(), batch.to_vec()).await {
+            match self
+                .parallel_collect(l1_head_hash.clone(), batch.to_vec())
+                .await
+            {
                 Ok(end) => latest_l2 = end.unwrap_or(latest_l2),
                 Err(e) => {
                     error!(

@@ -1,21 +1,21 @@
+use crate::data::finalized_l1_repository::FinalizedL1Repository;
+use alloy_primitives::B256;
+use axum::async_trait;
 use std::time;
 use std::time::Duration;
-use axum::async_trait;
-use alloy_primitives::B256;
 use tokio::fs;
 use tokio::fs::DirEntry;
-use crate::data::finalized_l1_repository::FinalizedL1Repository;
 
 #[derive(Clone)]
 pub struct FileFinalizedL1Repository {
     dir: String,
-    ttl: Duration
+    ttl: Duration,
 }
 impl FileFinalizedL1Repository {
     pub fn new(parent_dir: &str, ttl: Duration) -> anyhow::Result<Self> {
         Ok(Self {
             dir: parent_dir.to_string(),
-            ttl
+            ttl,
         })
     }
 
@@ -57,7 +57,9 @@ impl FinalizedL1Repository for FileFinalizedL1Repository {
         for entry in Self::entries(&self.dir).await? {
             let metadata = entry.metadata().await?;
             let created = metadata.created()?;
-            let expired = created.checked_add(self.ttl).ok_or_else(|| anyhow::anyhow!("expired finalized l1 cache is too new"))?;
+            let expired = created
+                .checked_add(self.ttl)
+                .ok_or_else(|| anyhow::anyhow!("expired finalized l1 cache is too new"))?;
             if now >= expired {
                 fs::remove_file(entry.path()).await?;
             }

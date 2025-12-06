@@ -1,4 +1,6 @@
+use crate::data::finalized_l1_repository::FinalizedL1Repository;
 use crate::data::preimage_repository::{PreimageMetadata, PreimageRepository};
+use alloy_primitives::B256;
 use anyhow::{Context, Result};
 use axum::extract::State;
 use axum::http::StatusCode;
@@ -7,11 +9,9 @@ use axum::Json;
 use serde::{Deserialize, Serialize};
 use std::fmt::Debug;
 use std::sync::Arc;
-use alloy_primitives::B256;
 use tokio::net::TcpListener;
 use tokio::task::JoinHandle;
 use tracing::{error, info};
-use crate::data::finalized_l1_repository::FinalizedL1Repository;
 
 #[derive(Clone)]
 pub struct SharedState {
@@ -49,7 +49,7 @@ async fn get_preimage(
     State(state): State<Arc<SharedState>>,
     Json(payload): Json<GetPreimageRequest>,
 ) -> (StatusCode, Vec<u8>) {
-    info!("derivation request: {:?}", payload);
+    info!("request: get_preimage: {:?}", payload);
     if let Err(v) = validate_get_preimage_request(&payload) {
         return (StatusCode::BAD_REQUEST, v.as_bytes().to_vec());
     }
@@ -58,7 +58,7 @@ async fn get_preimage(
     match result {
         Ok(preimage) => (StatusCode::OK, preimage),
         Err(e) => {
-            info!("failed to get preimage: {:?}", e);
+            error!("failed to get preimage: {:?}", e);
             (StatusCode::INTERNAL_SERVER_ERROR, vec![])
         }
     }
@@ -83,6 +83,7 @@ fn validate_get_preimage_request(payload: &GetPreimageRequest) -> Result<(), &'s
 async fn get_latest_metadata(
     State(state): State<Arc<SharedState>>,
 ) -> (StatusCode, Json<Option<PreimageMetadata>>) {
+    info!("request: get_latest_metadata");
     let result = state.preimage_repository.latest_metadata().await;
     match result {
         Some(metadata) => (StatusCode::OK, Json(Some(metadata))),
@@ -103,6 +104,7 @@ async fn list_metadata(
     State(state): State<Arc<SharedState>>,
     Json(payload): Json<ListMetadataRequest>,
 ) -> (StatusCode, Json<Vec<PreimageMetadata>>) {
+    info!("request: list_metadata: {:?}", payload);
     if payload.gt_claimed == 0 {
         error!("invalid gt_claimed",);
         return (StatusCode::BAD_REQUEST, Json(vec![]));
@@ -112,7 +114,10 @@ async fn list_metadata(
         return (StatusCode::BAD_REQUEST, Json(vec![]));
     }
     if payload.lt_claimed <= payload.gt_claimed {
-        error!("invalid lt_claimed {} <= gt_claimed {}", payload.lt_claimed, payload.gt_claimed,);
+        error!(
+            "invalid lt_claimed {} <= gt_claimed {}",
+            payload.lt_claimed, payload.gt_claimed,
+        );
         return (StatusCode::BAD_REQUEST, Json(vec![]));
     }
 
@@ -123,7 +128,6 @@ async fn list_metadata(
     (StatusCode::OK, Json(result))
 }
 
-
 #[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct GetFinalizedL1Request {
     pub l1_head_hash: B256,
@@ -133,6 +137,7 @@ async fn get_finalized_l1(
     State(state): State<Arc<SharedState>>,
     Json(payload): Json<GetFinalizedL1Request>,
 ) -> (StatusCode, String) {
+    info!("request: get_finalized_l1: {:?}", payload);
     let result = state
         .finalized_l1_repository
         .get(&payload.l1_head_hash)
@@ -140,7 +145,10 @@ async fn get_finalized_l1(
     match result {
         Ok(v) => (StatusCode::OK, v),
         Err(e) => {
-            error!("failed to get finalized l1: {:?}, hash:{:?}", e, payload.l1_head_hash);
+            error!(
+                "failed to get finalized l1: {:?}, hash:{:?}",
+                e, payload.l1_head_hash
+            );
             (StatusCode::NOT_FOUND, "".to_string())
         }
     }

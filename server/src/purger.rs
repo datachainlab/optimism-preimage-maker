@@ -1,8 +1,8 @@
+use crate::data::finalized_l1_repository::FinalizedL1Repository;
+use crate::data::preimage_repository::PreimageRepository;
 use std::sync::Arc;
 use std::time::Duration;
 use tokio::time;
-use crate::data::finalized_l1_repository::FinalizedL1Repository;
-use crate::data::preimage_repository::PreimageRepository;
 
 pub struct PreimagePurger<T: PreimageRepository, F: FinalizedL1Repository> {
     pub preimage_repository: Arc<T>,
