@@ -12,11 +12,11 @@ pub struct RpcResult<T> {
 }
 
 #[derive(Debug, Clone, serde::Serialize)]
-struct RpcRequest {
-    jsonrpc: String,
-    method: String,
-    params: Vec<Value>,
-    id: i64,
+pub struct RpcRequest {
+    pub jsonrpc: String,
+    pub method: String,
+    pub params: Vec<Value>,
+    pub id: i64,
 }
 
 impl Default for RpcRequest {
@@ -91,6 +91,7 @@ pub struct Block {
     pub hash: B256,
 }
 
+#[derive(Debug, Clone)]
 pub struct L2Client {
     op_node_addr: String,
     op_geth_addr: String,
