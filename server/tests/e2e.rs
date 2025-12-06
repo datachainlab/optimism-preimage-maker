@@ -1,3 +1,5 @@
+//! These tests are required to run the preimage server.
+
 use optimism_derivation::derivation::Derivation;
 use optimism_derivation::oracle::MemoryOracleClient;
 use optimism_derivation::types::Preimages;
@@ -9,14 +11,11 @@ use optimism_preimage_maker::web::{
 };
 use prost::Message;
 use std::env;
-use tracing::metadata;
 use tracing_subscriber::filter;
 use tracing_subscriber::layer::SubscriberExt;
 use tracing_subscriber::util::SubscriberInitExt;
 
-/// These tests are required to run the preimage server.
-
-fn init() {
+pub fn init() {
     let filter = filter::EnvFilter::from_default_env().add_directive("info".parse().unwrap());
     let _ = tracing_subscriber::registry()
         .with(tracing_subscriber::fmt::layer())
@@ -24,7 +23,7 @@ fn init() {
         .try_init();
 }
 
-fn get_l2_client() -> L2Client {
+pub fn get_l2_client() -> L2Client {
     let op_node_addr = env::var("L2_ROLLUP_ADDR").unwrap();
     let op_geth_addr = env::var("L2_GETH_ADDR").unwrap();
     tracing::info!(
@@ -62,7 +61,7 @@ pub async fn test_derivation_success() {
         .json()
         .await
         .unwrap();
-    assert!(metadata_list.len() > 0, "No metadata found");
+    assert!(!metadata_list.is_empty(), "No metadata found");
 
     for metadata in metadata_list {
         assert!(metadata.claimed > 100);

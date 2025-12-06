@@ -116,10 +116,7 @@ impl<T: PreimageRepository, F: FinalizedL1Repository> PreimageCollector<T, F> {
         }
 
         for batch in batches {
-            match self
-                .parallel_collect(l1_head_hash.clone(), batch.to_vec())
-                .await
-            {
+            match self.parallel_collect(l1_head_hash, batch.to_vec()).await {
                 Ok(end) => latest_l2 = end.unwrap_or(latest_l2),
                 Err(e) => {
                     error!(

@@ -20,7 +20,7 @@ impl FileFinalizedL1Repository {
     }
 
     fn path(&self, l1_head_hash: &B256) -> String {
-        format!("{}/{}.json", self.dir, l1_head_hash.to_string())
+        format!("{}/{}.json", self.dir, l1_head_hash)
     }
 
     async fn entries(dir: &str) -> anyhow::Result<Vec<DirEntry>> {
