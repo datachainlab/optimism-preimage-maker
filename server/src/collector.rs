@@ -4,7 +4,7 @@ use crate::derivation::host::single::handler::{Derivation, DerivationConfig, Der
 use alloy_primitives::B256;
 use std::sync::Arc;
 use tokio::time;
-use tracing::{error, info};
+use tracing::{error, info, warn};
 use crate::client::beacon_client::{BeaconClient, LightClientFinalityUpdateResponse};
 use crate::data::finalized_l1_repository::FinalizedL1Repository;
 
@@ -72,8 +72,8 @@ impl<T: PreimageRepository, F: FinalizedL1Repository> PreimageCollector<T, F> {
             };
             let block_number = finality_l1.data.finalized_header.execution.block_number;
             if block_number < sync_status.finalized_l1.number {
-                info!("insufficient finality_l1 = {:?}", block_number);
-                time::sleep(std::time::Duration::from_secs(10)).await;
+                warn!("finality_l1 = {:?} delayed.", block_number);
+                time::sleep(time::Duration::from_secs(10)).await;
                 continue
             }
             break (finality_l1, raw_finality_l1)
