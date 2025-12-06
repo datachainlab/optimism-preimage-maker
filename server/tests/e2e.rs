@@ -34,6 +34,42 @@ pub fn get_l2_client() -> L2Client {
     L2Client::new(op_node_addr, op_geth_addr)
 }
 
+pub async fn derivation_in_light_client(
+    l2_client: &L2Client,
+    preimages: Preimages,
+    metadata: PreimageMetadata,
+) {
+    let agreed_l2_output_root = l2_client
+        .output_root_at(metadata.agreed)
+        .await
+        .unwrap()
+        .output_root;
+    let claimed_l2_output_root = l2_client
+        .output_root_at(metadata.claimed)
+        .await
+        .unwrap()
+        .output_root;
+    let chain_id = l2_client.chain_id().await.unwrap();
+
+    let oracle = MemoryOracleClient::try_from(preimages.preimages).unwrap();
+    let derivation = Derivation::new(
+        metadata.l1_head,
+        agreed_l2_output_root,
+        claimed_l2_output_root,
+        metadata.claimed,
+    );
+    tracing::info!("start derivation {:?}", derivation);
+
+    let result = derivation.verify(chain_id, oracle);
+    match result {
+        Ok(h) => tracing::info!("Derivation verified successfully {:? }", h),
+        Err(e) => {
+            tracing::error!("Derivation verification failed: {:?}", e);
+            panic!("Derivation verification failed");
+        }
+    }
+}
+
 #[tokio::test(flavor = "multi_thread")]
 pub async fn test_derivation_success() {
     init();
@@ -99,35 +135,7 @@ pub async fn test_derivation_success() {
             .await
             .unwrap();
 
-        let agreed_l2_output_root = l2_client
-            .output_root_at(metadata.agreed)
-            .await
-            .unwrap()
-            .output_root;
-        let claimed_l2_output_root = l2_client
-            .output_root_at(metadata.claimed)
-            .await
-            .unwrap()
-            .output_root;
-        let chain_id = l2_client.chain_id().await.unwrap();
-
         let preimages = Preimages::decode(preimage_bytes).unwrap();
-        let oracle = MemoryOracleClient::try_from(preimages.preimages).unwrap();
-        let derivation = Derivation::new(
-            metadata.l1_head,
-            agreed_l2_output_root,
-            claimed_l2_output_root,
-            metadata.claimed,
-        );
-        tracing::info!("start derivation {:?}", derivation);
-
-        let result = derivation.verify(chain_id, oracle);
-        match result {
-            Ok(h) => tracing::info!("Derivation verified successfully {:? }", h),
-            Err(e) => {
-                tracing::error!("Derivation verification failed: {:?}", e);
-                panic!("Derivation verification failed");
-            }
-        }
+        derivation_in_light_client(&l2_client, preimages, metadata).await;
     }
 }

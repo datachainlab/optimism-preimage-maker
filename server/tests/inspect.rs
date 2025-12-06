@@ -1,25 +1,20 @@
+use optimism_derivation::types::Preimages;
 use optimism_preimage_maker::derivation::host::single::config::Config;
 use optimism_preimage_maker::derivation::host::single::handler::{
     Derivation, DerivationConfig, DerivationRequest,
 };
-use serde_json::Value;
+use prost::Message;
 use serial_test::serial;
 use std::env;
 use std::sync::Arc;
 use tracing::info;
 
 mod e2e;
+use crate::e2e::derivation_in_light_client;
 use e2e::get_l2_client;
 use e2e::init;
-use optimism_preimage_maker::client::l2_client::{Block, RpcResult};
-
-#[derive(Debug, Clone, serde::Serialize, Default)]
-struct RpcRequest {
-    jsonrpc: String,
-    method: String,
-    params: Vec<Value>,
-    id: i64,
-}
+use optimism_preimage_maker::client::l2_client::{Block, RpcRequest, RpcResult};
+use optimism_preimage_maker::data::preimage_repository::PreimageMetadata;
 
 async fn get_block_by_number(number: u64, l1_geth_addr: &str) -> anyhow::Result<Block> {
     let client = reqwest::Client::new();
@@ -34,6 +29,11 @@ async fn get_block_by_number(number: u64, l1_geth_addr: &str) -> anyhow::Result<
         .json(&body)
         .send()
         .await?;
+    if !response.status().is_success() {
+        return Err(anyhow::anyhow!(
+            "failed to get block by number: {response:?}"
+        ));
+    }
     let result: RpcResult<Block> = response.json().await?;
     Ok(result.result)
 }
@@ -57,7 +57,7 @@ async fn test_derivation() {
     let l2_client = get_l2_client();
     let chain_id = l2_client.chain_id().await.unwrap();
 
-    let op_geth_addr = env::var("L2__ADDR").unwrap();
+    let op_geth_addr = env::var("L2_GETH_ADDR").unwrap();
     let op_node_addr = env::var("L2_ROLLUP_ADDR").unwrap();
     let l1_geth_addr = env::var("L1_GETH_ADDR").unwrap();
     let l1_beacon_addr = env::var("L1_BEACON_ADDR").unwrap();
@@ -65,7 +65,7 @@ async fn test_derivation() {
     let claimed_output = l2_client.output_root_at(claimed).await.unwrap();
     let agreed_output = l2_client.output_root_at(agreed).await.unwrap();
     let l1_hash = get_block_by_number(
-        claimed_output.block_ref.l1_origin.number + 100,
+        claimed_output.block_ref.l1_origin.number + 50,
         &l1_geth_addr,
     )
     .await
@@ -92,11 +92,25 @@ async fn test_derivation() {
         l1_chain_config: None,
     });
 
-    info!("derivation start : {:?}", &request);
+    info!("start derivation in preimage maker: {:?}", &request);
     let derivation = Derivation { config, request };
     let result = derivation.start().await;
-    match result {
-        Ok(_) => info!("derivation success"),
+    let preimage = match result {
+        Ok(preimage) => {
+            info!("derivation success");
+            Preimages::decode(preimage.as_slice()).unwrap()
+        }
         Err(e) => panic!("derivation failed: {e:?}"),
-    }
+    };
+
+    derivation_in_light_client(
+        &l2_client,
+        preimage,
+        PreimageMetadata {
+            agreed,
+            claimed,
+            l1_head: l1_hash,
+        },
+    )
+    .await;
 }

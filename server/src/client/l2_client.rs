@@ -12,11 +12,11 @@ pub struct RpcResult<T> {
 }
 
 #[derive(Debug, Clone, serde::Serialize)]
-struct RpcRequest {
-    jsonrpc: String,
-    method: String,
-    params: Vec<Value>,
-    id: i64,
+pub struct RpcRequest {
+    pub jsonrpc: String,
+    pub method: String,
+    pub params: Vec<Value>,
+    pub id: i64,
 }
 
 impl Default for RpcRequest {
