@@ -86,7 +86,10 @@ async fn get_latest_metadata(
     info!("request: get_latest_metadata");
     let result = state.preimage_repository.latest_metadata().await;
     match result {
-        Some(metadata) => (StatusCode::OK, Json(Some(metadata))),
+        Some(metadata) => {
+            info!("latest metadata: {:?}", metadata);
+            (StatusCode::OK, Json(Some(metadata)))
+        },
         None => {
             error!("failed to get latest metadata",);
             (StatusCode::NOT_FOUND, Json(None))
