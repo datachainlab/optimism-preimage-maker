@@ -1,11 +1,11 @@
 use crate::data::preimage_repository::{PreimageMetadata, PreimageRepository};
 use axum::async_trait;
+use std::collections::HashMap;
 use std::sync::{Arc, RwLock};
 use std::time;
 use tokio::fs;
 use tokio::fs::DirEntry;
 use tracing::{error, info};
-use std::collections::HashMap;
 
 #[derive(Clone)]
 pub struct FilePreimageRepository {
@@ -41,7 +41,10 @@ impl FilePreimageRepository {
             let name = match name_osstr.to_str() {
                 Some(s) => s.to_string(),
                 None => {
-                    error!("skipping file with invalid UTF-8 filename: {:?}", name_osstr);
+                    error!(
+                        "skipping file with invalid UTF-8 filename: {:?}",
+                        name_osstr
+                    );
                     continue;
                 }
             };
@@ -131,9 +134,9 @@ impl PreimageRepository for FilePreimageRepository {
         for entry in Self::entries(&self.dir).await? {
             let metadata = entry.metadata().await?;
             let created = metadata.created()?;
-            let expired = created
-                .checked_add(self.ttl)
-                .ok_or_else(|| anyhow::anyhow!("TTL duration overflow when calculating expiration time"))?;
+            let expired = created.checked_add(self.ttl).ok_or_else(|| {
+                anyhow::anyhow!("TTL duration overflow when calculating expiration time")
+            })?;
             if now >= expired {
                 target.push(entry);
             }
@@ -212,9 +215,13 @@ mod tests {
 
     #[tokio::test]
     async fn test_new_with_non_existent_dir() {
-        let res = FilePreimageRepository::new("/path/to/non/existent/dir", Duration::from_secs(1)).await;
+        let res =
+            FilePreimageRepository::new("/path/to/non/existent/dir", Duration::from_secs(1)).await;
         assert!(res.is_err());
-        assert_eq!(res.err().unwrap().to_string(), "directory does not exist: /path/to/non/existent/dir");
+        assert_eq!(
+            res.err().unwrap().to_string(),
+            "directory does not exist: /path/to/non/existent/dir"
+        );
     }
 
     #[tokio::test]

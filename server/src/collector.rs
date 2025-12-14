@@ -60,7 +60,6 @@ where
     B: BeaconClient,
     D: DerivationDriver,
 {
-
     /// Starts the asynchronous process to continually check and collect claimed metadata.
     ///
     /// This function retrieves the latest claimed metadata from the `preimage_repository`.
@@ -69,20 +68,6 @@ where
     /// 2. Updates the `latest_l2` value if new metadata is claimed.
     /// 3. Waits for a specified interval (defined by `self.interval_seconds`) before repeating the process.
     ///
-    /// # Behavior
-    /// - If the repository contains metadata (via `latest_metadata()`), it initializes `latest_l2`
-    ///   with the `claimed` value from the metadata.
-    /// - If the repository has no metadata, it uses `self.initial_claimed` as the starting value.
-    /// - The process runs indefinitely, periodically calling `collect` and updating `latest_l2` if new
-    ///   claimed metadata is found.
-    ///
-    /// # Requirements
-    /// - The `self.preimage_repository.latest_metadata()` method should return an `Option` containing
-    ///   metadata or `None` if no metadata exists.
-    /// - The `self.collect(latest_l2)` method should perform the collection operation and return
-    ///   an `Option<u64>` indicating a new claimed value, or `None` if no update is available.
-    ///
-    /// # Note
     /// The loop runs indefinitely. To stop it, external cancellation or shutdown logic should be
     /// implemented, such as utilizing `tokio::task::JoinHandle` or a cancellation token.
     pub async fn start(&self) {
@@ -101,11 +86,6 @@ where
     /// Asynchronously collects and processes data starting from a specified `latest_l2` value,
     /// attempting to derive L2 data up to the finalized L2 number obtained from the sync status.
     ///
-    /// # Arguments
-    ///
-    /// * `latest_l2` - The starting point from which L2 derivation and data processing will occur.
-    ///
-    /// # Steps
     /// 1. The method retrieves the synchronization status of the client and checks if further
     ///    processing is needed by comparing the `latest_l2` with the finalized L2 number. If the
     ///    finalized L2 number is less than or equal to `latest_l2`, no further processing is performed.
@@ -121,15 +101,6 @@ where
     ///
     /// 5. For each batch, a parallel collection process is performed using `parallel_collect`. Any errors
     ///    encountered are logged, and the process stops for the current batch to retry from the latest state.
-    ///
-    /// # Return Value
-    /// * Returns `Some(u64)` with the updated `latest_l2` value if processing is successful.
-    /// * Returns `None` if there is an error while fetching the sync status or an issue occurs that halts the process.
-    ///
-    /// # Errors
-    /// * If the synchronization status cannot be retrieved (`sync_status` fetch fails).
-    /// * If there is an issue saving the finalized L1 head hash to the database.
-    /// * If there is an error during parallel collection in one of the batches.
     ///
     async fn collect(&self, latest_l2: u64) -> Option<u64> {
         let mut latest_l2 = latest_l2;
@@ -153,7 +124,7 @@ where
         };
 
         // Get latest l1 head hash for L2 derivation
-        let (l1_head_hash, raw_finality_l1)= self.get_l1_head_hash(&sync_status).await?;
+        let (l1_head_hash, raw_finality_l1) = self.get_l1_head_hash(&sync_status).await?;
 
         // Collect preimage from latest_l2 to finalized_l2
         let pairs = split(
@@ -202,16 +173,6 @@ where
     /// This function communicates with the beacon client to fetch the latest finalized L1 block data.
     /// It ensures the returned block is up-to-date relative to the specified [`SyncStatus`].
     ///
-    /// # Parameters
-    /// - `sync_status`: A reference to [`SyncStatus`] that includes information about the finalized L1 block number.
-    ///
-    /// # Returns
-    /// - `Option<(B256, String)>`: Returns a tuple containing:
-    ///   - The L1 block hash (`B256`) of the finalized L1 block.
-    ///   - The raw JSON response (`String`) of the finalized L1 block information from the beacon client.
-    ///   - Returns `None` if an error occurs while communicating with the beacon client or if deserialization fails.
-    ///
-    /// # Behavior
     /// - The function fetches the raw `finality` update from the beacon client.
     /// - It validates that the block is not outdated compared to the `sync_status`.
     /// - In case the retrieved block number is outdated, it waits for a small delay (10 seconds) and retries.
@@ -219,10 +180,6 @@ where
     ///   - Failure to fetch or deserialize the finality update.
     ///   - Delayed finality L1 blocks.
     /// - If a valid and up-to-date finalized block is found, it returns the L1 block's hash and raw response.
-    ///
-    /// # Errors
-    /// - Logs an error and returns `None` if the beacon client fails to provide a finality update.
-    /// - Logs an error and returns `None` if deserialization of the finality update fails.
     ///
     async fn get_l1_head_hash(&self, sync_status: &SyncStatus) -> Option<(B256, String)> {
         let (finality_l1, raw_finality_l1) = loop {
@@ -264,19 +221,6 @@ where
     /// Performs parallel collection of data within a specified range, processes it using multiple
     /// asynchronous tasks, and commits the resulting batch.
     ///
-    /// # Parameters
-    ///
-    /// * `l1_head_hash` - A `B256` hash representing the current L1 chain head.
-    /// * `batch` - A vector of tuples, where each tuple represents a range of work (`start`, `end`)
-    ///   to process. Each tuple is of the form `(u64, u64)`.
-    ///
-    /// # Returns
-    ///
-    /// * `anyhow::Result<Option<u64>>` - If successful, an `Option<u64>` indicating the outcome of the
-    ///   operation is returned. If the operation fails, an error is returned.
-    ///
-    /// # Functionality
-    ///
     /// 1. Creates multiple asynchronous tasks to process the range of work defined in the `batch`.
     ///    - Each range element (`start`, `end`) is processed by the `collect` function.
     ///    - The `collect` function performs the desired collection logic with `l2_client` and `config`.
@@ -284,13 +228,6 @@ where
     /// 3. Collects the results asynchronously, returning an error if any task fails.
     /// 4. Once all tasks are complete, invokes the `commit_batch` method to commit the collected
     ///    results.
-    ///
-    /// # Errors
-    ///
-    /// Returns an error if:
-    /// - `tokio::spawn` fails to spawn a task.
-    /// - A spawned task returns an error.
-    /// - `commit_batch` encounters an issue during the commit process.
     ///
     /// ```
     async fn parallel_collect(
@@ -306,7 +243,15 @@ where
             let config = self.config.clone();
             let derivation_driver = self.derivation_driver.clone();
             tasks.push(tokio::spawn(async move {
-                collect(l2_client, config, derivation_driver, l1_head_hash, start, end).await
+                collect(
+                    l2_client,
+                    config,
+                    derivation_driver,
+                    l1_head_hash,
+                    start,
+                    end,
+                )
+                .await
             }));
         }
 
@@ -329,24 +274,10 @@ where
     ///   invoking the `upsert` method of the `preimage_repository`.
     /// - Tracks and updates the latest claimed block number during the iteration.
     ///
-    /// # Arguments
-    /// * `successes` - A vector of tuples where each tuple contains:
-    ///     - `PreimageMetadata`: Metadata associated with the preimage.
-    ///     - `Vec<u8>`: The preimage data itself.
-    ///
-    /// # Returns
-    /// On success, returns `Ok` with an `Option<u64>`:
-    ///   - `Some(u64)`: The latest claimed block number from the preimages.
-    ///   - `None`: If the input `successes` vector is empty.
-    ///
-    /// On failure, an `anyhow::Error` is returned.
-    ///
-    /// # Errors
-    /// This function may return an error in the following cases:
-    /// - If the `upsert` operation for the `preimage_repository` fails during the iteration.
-    ///
-    async fn commit_batch(&self, mut successes: Vec<(PreimageMetadata, Vec<u8>)>) -> anyhow::Result<Option<u64>> {
-
+    async fn commit_batch(
+        &self,
+        mut successes: Vec<(PreimageMetadata, Vec<u8>)>,
+    ) -> anyhow::Result<Option<u64>> {
         // Sort by claimed block number to ensure deterministic order of preimages
         successes.sort_by(|a, b| a.0.claimed.cmp(&b.0.claimed));
 
@@ -412,29 +343,23 @@ fn split(agreed: u64, finalized: u64, chunk: u64) -> Vec<(u64, u64)> {
     pairs
 }
 
-
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::client::l2_client::{
-        Block, L2Client, L2Header, OutputRootAtBlock, SyncStatus,
-    };
     use crate::client::beacon_client::BeaconClient;
+    use crate::client::l2_client::{Block, L2Client, OutputRootAtBlock, SyncStatus};
     use crate::derivation::host::single::config::Config;
     use crate::derivation::host::single::handler::DerivationConfig;
     use alloy_primitives::B256;
+    use anyhow::anyhow;
     use axum::async_trait;
     use clap::Parser;
     use kona_genesis::RollupConfig;
     use std::sync::Mutex;
-    use anyhow::anyhow;
 
     fn assert_contiguous(pairs: &[(u64, u64)], agreed: u64, finalized: u64) {
         if pairs.is_empty() {
-            assert!(
-                agreed >= finalized,
-                "empty implies agreed >= finalized"
-            );
+            assert!(agreed >= finalized, "empty implies agreed >= finalized");
             return;
         }
         assert_eq!(
@@ -533,15 +458,24 @@ mod tests {
 
     #[async_trait]
     impl L2Client for MockL2Client {
-        async fn chain_id(&self) -> anyhow::Result<u64> { Ok(10) }
-        async fn rollup_config(&self) -> anyhow::Result<RollupConfig> { Err(anyhow!("unimplemented")) }
+        async fn chain_id(&self) -> anyhow::Result<u64> {
+            Ok(10)
+        }
+        async fn rollup_config(&self) -> anyhow::Result<RollupConfig> {
+            Err(anyhow!("unimplemented"))
+        }
         async fn sync_status(&self) -> anyhow::Result<SyncStatus> {
             self.sync_status.clone().ok_or(anyhow!("sync status error"))
         }
         async fn output_root_at(&self, number: u64) -> anyhow::Result<OutputRootAtBlock> {
-            self.output_roots.get(&number).cloned().ok_or(anyhow!("no output root"))
+            self.output_roots
+                .get(&number)
+                .cloned()
+                .ok_or(anyhow!("no output root"))
         }
-        async fn get_block_by_number(&self, _number: u64) -> anyhow::Result<Block> { Err(anyhow!("unimplemented")) }
+        async fn get_block_by_number(&self, _number: u64) -> anyhow::Result<Block> {
+            Err(anyhow!("unimplemented"))
+        }
     }
 
     struct MockBeaconClient {
@@ -551,7 +485,7 @@ mod tests {
     #[async_trait]
     impl BeaconClient for MockBeaconClient {
         async fn get_raw_light_client_finality_update(&self) -> anyhow::Result<String> {
-             self.finality_update.clone().ok_or(anyhow!("error"))
+            self.finality_update.clone().ok_or(anyhow!("error"))
         }
     }
 
@@ -561,7 +495,11 @@ mod tests {
 
     #[async_trait]
     impl DerivationDriver for MockDerivationDriver {
-        async fn drive(&self, _config: Arc<DerivationConfig>, request: DerivationRequest) -> anyhow::Result<Vec<u8>> {
+        async fn drive(
+            &self,
+            _config: Arc<DerivationConfig>,
+            request: DerivationRequest,
+        ) -> anyhow::Result<Vec<u8>> {
             self.calls.lock().unwrap().push(request);
             Ok(vec![0x1, 0x2, 0x3])
         }
@@ -573,14 +511,26 @@ mod tests {
 
     #[async_trait]
     impl PreimageRepository for MockPreimageRepository {
-        async fn upsert(&self, metadata: PreimageMetadata, _preimage: Vec<u8>) -> anyhow::Result<()> {
+        async fn upsert(
+            &self,
+            metadata: PreimageMetadata,
+            _preimage: Vec<u8>,
+        ) -> anyhow::Result<()> {
             self.upserted.lock().unwrap().push(metadata);
             Ok(())
         }
-        async fn get(&self, _metadata: &PreimageMetadata) -> anyhow::Result<Vec<u8>> { Ok(vec![]) }
-        async fn list_metadata(&self, _lt: Option<u64>, _gt: Option<u64>) -> Vec<PreimageMetadata> { vec![] }
-        async fn latest_metadata(&self) -> Option<PreimageMetadata> { None }
-        async fn purge_expired(&self) -> anyhow::Result<()> { Ok(()) }
+        async fn get(&self, _metadata: &PreimageMetadata) -> anyhow::Result<Vec<u8>> {
+            Ok(vec![])
+        }
+        async fn list_metadata(&self, _lt: Option<u64>, _gt: Option<u64>) -> Vec<PreimageMetadata> {
+            vec![]
+        }
+        async fn latest_metadata(&self) -> Option<PreimageMetadata> {
+            None
+        }
+        async fn purge_expired(&self) -> anyhow::Result<()> {
+            Ok(())
+        }
     }
 
     struct MockFinalizedL1Repository {
@@ -589,12 +539,20 @@ mod tests {
 
     #[async_trait]
     impl FinalizedL1Repository for MockFinalizedL1Repository {
-         async fn upsert(&self, l1_head_hash: &B256, _raw_finalized_l1: String) -> anyhow::Result<()> {
-             self.upserted.lock().unwrap().push(*l1_head_hash);
-             Ok(())
-         }
-         async fn get(&self, _l1_head_hash: &B256) -> anyhow::Result<String> { Ok("".into()) }
-         async fn purge_expired(&self) -> anyhow::Result<()> { Ok(()) }
+        async fn upsert(
+            &self,
+            l1_head_hash: &B256,
+            _raw_finalized_l1: String,
+        ) -> anyhow::Result<()> {
+            self.upserted.lock().unwrap().push(*l1_head_hash);
+            Ok(())
+        }
+        async fn get(&self, _l1_head_hash: &B256) -> anyhow::Result<String> {
+            Ok("".into())
+        }
+        async fn purge_expired(&self) -> anyhow::Result<()> {
+            Ok(())
+        }
     }
 
     #[tokio::test]
@@ -616,10 +574,10 @@ mod tests {
         let mut output_roots = std::collections::HashMap::new();
         output_roots.insert(100, dummy_output_root(100)); // agreed
         output_roots.insert(110, dummy_output_root(110)); // target
-        output_roots.insert(120, dummy_output_root(120)); 
-        output_roots.insert(130, dummy_output_root(130)); 
-        output_roots.insert(140, dummy_output_root(140)); 
-        output_roots.insert(150, dummy_output_root(150)); 
+        output_roots.insert(120, dummy_output_root(120));
+        output_roots.insert(130, dummy_output_root(130));
+        output_roots.insert(140, dummy_output_root(140));
+        output_roots.insert(150, dummy_output_root(150));
 
         let l2_client = Arc::new(MockL2Client {
             sync_status: Some(sync_status),
@@ -636,12 +594,27 @@ mod tests {
                      }
                  }
              }
-        }).to_string();
+        })
+        .to_string();
         let beacon_client = Arc::new(MockBeaconClient {
             finality_update: Some(update_json),
         });
 
-        let conf = Config::parse_from(&["exe", "--l1-beacon-address", "http://localhost:5052", "--l2-node-address", "http://localhost:8545", "--l2-rollup-address", "http://localhost:8545", "--preimage-dir", "/tmp", "--finalized-l1-dir", "/tmp", "--initial-claimed-l2", "0"]); // Partial config ok
+        let conf = Config::parse_from([
+            "exe",
+            "--l1-beacon-address",
+            "http://localhost:5052",
+            "--l2-node-address",
+            "http://localhost:8545",
+            "--l2-rollup-address",
+            "http://localhost:8545",
+            "--preimage-dir",
+            "/tmp",
+            "--finalized-l1-dir",
+            "/tmp",
+            "--initial-claimed-l2",
+            "0",
+        ]); // Partial config ok
         let derivation_config = Arc::new(DerivationConfig {
             config: conf,
             rollup_config: None,
@@ -650,15 +623,21 @@ mod tests {
         });
 
         let mock_derivations = Arc::new(Mutex::new(vec![]));
-        let derivation_driver = Arc::new(MockDerivationDriver { calls: mock_derivations.clone() });
+        let derivation_driver = Arc::new(MockDerivationDriver {
+            calls: mock_derivations.clone(),
+        });
 
-        let mock_preimage_repo = Arc::new(MockPreimageRepository { upserted: Arc::new(Mutex::new(vec![])) });
-        let mock_finalized_repo = Arc::new(MockFinalizedL1Repository { upserted: Arc::new(Mutex::new(vec![])) });
+        let mock_preimage_repo = Arc::new(MockPreimageRepository {
+            upserted: Arc::new(Mutex::new(vec![])),
+        });
+        let mock_finalized_repo = Arc::new(MockFinalizedL1Repository {
+            upserted: Arc::new(Mutex::new(vec![])),
+        });
 
         let collector = PreimageCollector {
             client: l2_client,
-            beacon_client: beacon_client,
-            derivation_driver: derivation_driver,
+            beacon_client,
+            derivation_driver,
             config: derivation_config,
             preimage_repository: mock_preimage_repo.clone(),
             finalized_l1_repository: mock_finalized_repo.clone(),
@@ -670,14 +649,14 @@ mod tests {
 
         // Start from 100
         let new_head = collector.collect(100).await;
-        
+
         assert_eq!(new_head, Some(150)); // Should reach finalized_l2 150
 
         // Verify derivation calls
         let calls = mock_derivations.lock().unwrap();
         // 100->110, 110->120, 120->130, 130->140, 140->150 (5 chunks of size 10)
         assert_eq!(calls.len(), 5);
-        
+
         // Verify finalized L1 saved
         assert_eq!(mock_finalized_repo.upserted.lock().unwrap().len(), 1);
         assert_eq!(mock_finalized_repo.upserted.lock().unwrap()[0], l1_head);
@@ -701,19 +680,25 @@ mod tests {
             number,
             parent_hash: B256::ZERO,
             timestamp: 0,
-            l1origin: crate::client::l2_client::L1Origin { hash: B256::ZERO, number: 0 },
+            l1origin: crate::client::l2_client::L1Origin {
+                hash: B256::ZERO,
+                number: 0,
+            },
             sequence_number: 0,
         }
     }
 
     fn dummy_output_root(number: u64) -> OutputRootAtBlock {
         OutputRootAtBlock {
-             output_root: B256::ZERO,
-             block_ref: crate::client::l2_client::L2BlockRef {
-                 hash: B256::ZERO,
-                 number,
-                 l1_origin: crate::client::l2_client::L1Origin { hash: B256::ZERO, number: 0 },
-             }
+            output_root: B256::ZERO,
+            block_ref: crate::client::l2_client::L2BlockRef {
+                hash: B256::ZERO,
+                number,
+                l1_origin: crate::client::l2_client::L1Origin {
+                    hash: B256::ZERO,
+                    number: 0,
+                },
+            },
         }
     }
 }

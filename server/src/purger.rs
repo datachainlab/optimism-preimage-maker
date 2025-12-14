@@ -43,10 +43,26 @@ mod tests {
     }
     #[async_trait]
     impl PreimageRepository for MockPreimageRepository {
-        async fn upsert(&self, _metadata: PreimageMetadata, _preimage: Vec<u8>) -> anyhow::Result<()> { Ok(()) }
-        async fn get(&self, _metadata: &PreimageMetadata) -> anyhow::Result<Vec<u8>> { Ok(vec![]) }
-        async fn list_metadata(&self, _lt_claimed: Option<u64>, _gt_claimed: Option<u64>) -> Vec<PreimageMetadata> { vec![] }
-        async fn latest_metadata(&self) -> Option<PreimageMetadata> { None }
+        async fn upsert(
+            &self,
+            _metadata: PreimageMetadata,
+            _preimage: Vec<u8>,
+        ) -> anyhow::Result<()> {
+            Ok(())
+        }
+        async fn get(&self, _metadata: &PreimageMetadata) -> anyhow::Result<Vec<u8>> {
+            Ok(vec![])
+        }
+        async fn list_metadata(
+            &self,
+            _lt_claimed: Option<u64>,
+            _gt_claimed: Option<u64>,
+        ) -> Vec<PreimageMetadata> {
+            vec![]
+        }
+        async fn latest_metadata(&self) -> Option<PreimageMetadata> {
+            None
+        }
         async fn purge_expired(&self) -> anyhow::Result<()> {
             *self.purged.lock().unwrap() = true;
             Ok(())
@@ -58,8 +74,16 @@ mod tests {
     }
     #[async_trait]
     impl FinalizedL1Repository for MockFinalizedL1Repository {
-        async fn upsert(&self, _l1_head_hash: &B256, _raw_finalized_l1: String) -> anyhow::Result<()> { Ok(()) }
-        async fn get(&self, _l1_head_hash: &B256) -> anyhow::Result<String> { Ok("".to_string()) }
+        async fn upsert(
+            &self,
+            _l1_head_hash: &B256,
+            _raw_finalized_l1: String,
+        ) -> anyhow::Result<()> {
+            Ok(())
+        }
+        async fn get(&self, _l1_head_hash: &B256) -> anyhow::Result<String> {
+            Ok("".to_string())
+        }
         async fn purge_expired(&self) -> anyhow::Result<()> {
             *self.purged.lock().unwrap() = true;
             Ok(())
@@ -71,8 +95,12 @@ mod tests {
         let p_purged = Arc::new(Mutex::new(false));
         let l1_purged = Arc::new(Mutex::new(false));
 
-        let p_repo = MockPreimageRepository { purged: p_purged.clone() };
-        let l1_repo = MockFinalizedL1Repository { purged: l1_purged.clone() };
+        let p_repo = MockPreimageRepository {
+            purged: p_purged.clone(),
+        };
+        let l1_repo = MockFinalizedL1Repository {
+            purged: l1_purged.clone(),
+        };
 
         let purger = PreimagePurger {
             preimage_repository: Arc::new(p_repo),

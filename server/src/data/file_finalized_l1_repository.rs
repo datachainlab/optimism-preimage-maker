@@ -82,9 +82,13 @@ mod tests {
 
     #[test]
     fn test_new_with_non_existent_dir() {
-        let res = FileFinalizedL1Repository::new("/path/to/non/existent/dir", Duration::from_secs(1));
+        let res =
+            FileFinalizedL1Repository::new("/path/to/non/existent/dir", Duration::from_secs(1));
         assert!(res.is_err());
-        assert_eq!(res.err().unwrap().to_string(), "directory does not exist: /path/to/non/existent/dir");
+        assert_eq!(
+            res.err().unwrap().to_string(),
+            "directory does not exist: /path/to/non/existent/dir"
+        );
     }
 
     #[test]
@@ -102,7 +106,9 @@ mod tests {
             .unwrap()
             .as_nanos();
         let pid = std::process::id();
-        dir.push(format!("optimism_preimage_maker_test_l1_{pid}_{ts}_{suffix}"));
+        dir.push(format!(
+            "optimism_preimage_maker_test_l1_{pid}_{ts}_{suffix}"
+        ));
         std::fs::create_dir_all(&dir).expect("create temp dir");
         dir.to_string_lossy().to_string()
     }
@@ -131,7 +137,8 @@ mod tests {
     async fn test_purge_expired() {
         let dir = unique_test_dir("purge");
         // Short TTL
-        let repo = FileFinalizedL1Repository::new(&dir, Duration::from_millis(100)).expect("new repo");
+        let repo =
+            FileFinalizedL1Repository::new(&dir, Duration::from_millis(100)).expect("new repo");
 
         let h1 = B256::from([0xaau8; 32]);
         let data = "old data".to_string();
@@ -141,7 +148,9 @@ mod tests {
         tokio::time::sleep(Duration::from_millis(200)).await;
 
         let h2 = B256::from([0xbbu8; 32]);
-        repo.upsert(&h2, "new data".to_string()).await.expect("upsert h2");
+        repo.upsert(&h2, "new data".to_string())
+            .await
+            .expect("upsert h2");
 
         // Purge should remove h1 but keep h2 (assuming touch updates mod time or we rely on creation time)
         // Note: The implementation uses `metadata.created()`. File creation time is usually fixed.
