@@ -26,3 +26,5 @@ target/
 *.bin
 *.json
 chain
+.preimage
+.finalized_l1
