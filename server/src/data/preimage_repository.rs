@@ -3,7 +3,7 @@ use alloy_primitives::B256;
 use axum::async_trait;
 use serde::{Deserialize, Serialize};
 
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, Hash)]
 pub struct PreimageMetadata {
     pub agreed: u64,
     pub claimed: u64,
