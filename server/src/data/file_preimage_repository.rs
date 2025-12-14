@@ -37,7 +37,14 @@ impl FilePreimageRepository {
 
         let entries = Self::entries(dir).await?;
         for entry in entries {
-            let name = entry.file_name().to_str().unwrap().to_string();
+            let name_osstr = entry.file_name();
+            let name = match name_osstr.to_str() {
+                Some(s) => s.to_string(),
+                None => {
+                    error!("skipping file with invalid UTF-8 filename: {:?}", name_osstr);
+                    continue;
+                }
+            };
             let metadata = PreimageMetadata::try_from(name.as_str());
             match metadata {
                 Err(e) => {

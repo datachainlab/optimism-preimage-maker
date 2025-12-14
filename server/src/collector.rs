@@ -229,8 +229,8 @@ mod tests {
     fn assert_contiguous(pairs: &[(u64, u64)], agreed: u64, finalized: u64) {
         if pairs.is_empty() {
             assert!(
-                agreed >= finalized || agreed == finalized,
-                "empty implies agreed==finalized"
+                agreed >= finalized,
+                "empty implies agreed >= finalized"
             );
             return;
         }
