@@ -5,11 +5,12 @@ use std::time;
 use tokio::fs;
 use tokio::fs::DirEntry;
 use tracing::{error, info};
+use std::collections::HashMap;
 
 #[derive(Clone)]
 pub struct FilePreimageRepository {
     dir: String,
-    metadata_list: Arc<RwLock<Vec<PreimageMetadata>>>,
+    metadata_list: Arc<RwLock<HashMap<u64, PreimageMetadata>>>,
     ttl: time::Duration,
 }
 
@@ -24,8 +25,8 @@ impl FilePreimageRepository {
         })
     }
 
-    async fn load_metadata(dir: &str) -> anyhow::Result<Vec<PreimageMetadata>> {
-        let mut metadata_list = vec![];
+    async fn load_metadata(dir: &str) -> anyhow::Result<HashMap<u64, PreimageMetadata>> {
+        let mut metadata_list = HashMap::new();
 
         let entries = Self::entries(dir).await?;
         for entry in entries {
@@ -35,10 +36,11 @@ impl FilePreimageRepository {
                 Err(e) => {
                     error!("failed to parse metadata: {:?}, error={}", name, e);
                 }
-                Ok(metadata) => metadata_list.push(metadata),
+                Ok(metadata) => {
+                    metadata_list.insert(metadata.claimed, metadata);
+                }
             }
         }
-        Self::sort(&mut metadata_list);
         Ok(metadata_list)
     }
 
@@ -76,7 +78,7 @@ impl PreimageRepository for FilePreimageRepository {
         fs::write(&path, preimage).await?;
         // NOTE: Process should be restarted when locking is failed to avoid dirty metadata.
         let mut lock = self.metadata_list.write().unwrap();
-        lock.push(metadata);
+        lock.insert(metadata.claimed, metadata);
         Ok(())
     }
     async fn get(&self, metadata: &PreimageMetadata) -> anyhow::Result<Vec<u8>> {
@@ -91,7 +93,7 @@ impl PreimageRepository for FilePreimageRepository {
     ) -> Vec<PreimageMetadata> {
         let mut raw = {
             let lock = self.metadata_list.read().unwrap();
-            lock.clone()
+            lock.values().cloned().collect::<Vec<_>>()
         };
         Self::sort(&mut raw);
         let raw = match gt_claimed {
@@ -138,7 +140,7 @@ impl PreimageRepository for FilePreimageRepository {
         {
             let mut lock = self.metadata_list.write().unwrap();
             for v in target_cached {
-                lock.retain(|m| m != &v);
+                lock.remove(&v.claimed);
             }
         }
 
