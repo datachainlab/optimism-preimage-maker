@@ -43,11 +43,6 @@ impl<T: PreimageRepository, F: FinalizedL1Repository> PreimageCollector<T, F> {
     /// - The `self.collect(latest_l2)` method should perform the collection operation and return
     ///   an `Option<u64>` indicating a new claimed value, or `None` if no update is available.
     ///
-    /// # Example Usage
-    /// ```rust
-    /// my_instance.start().await;
-    /// ```
-    ///
     /// # Note
     /// The loop runs indefinitely. To stop it, external cancellation or shutdown logic should be
     /// implemented, such as utilizing `tokio::task::JoinHandle` or a cancellation token.
