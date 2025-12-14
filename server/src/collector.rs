@@ -4,13 +4,45 @@ use crate::data::finalized_l1_repository::FinalizedL1Repository;
 use crate::data::preimage_repository::{PreimageMetadata, PreimageRepository};
 use crate::derivation::host::single::handler::{Derivation, DerivationConfig, DerivationRequest};
 use alloy_primitives::B256;
+use axum::async_trait;
 use std::sync::Arc;
 use tokio::time;
 use tracing::{error, info, warn};
 
-pub struct PreimageCollector<T: PreimageRepository, F: FinalizedL1Repository> {
-    pub client: Arc<L2Client>,
-    pub beacon_client: Arc<BeaconClient>,
+#[async_trait]
+pub trait DerivationDriver: Send + Sync + 'static {
+    async fn drive(
+        &self,
+        config: Arc<DerivationConfig>,
+        request: DerivationRequest,
+    ) -> anyhow::Result<Vec<u8>>;
+}
+
+pub struct RealDerivationDriver;
+
+#[async_trait]
+impl DerivationDriver for RealDerivationDriver {
+    async fn drive(
+        &self,
+        config: Arc<DerivationConfig>,
+        request: DerivationRequest,
+    ) -> anyhow::Result<Vec<u8>> {
+        let derivation = Derivation { config, request };
+        derivation.start().await
+    }
+}
+
+pub struct PreimageCollector<T, F, L, B, D>
+where
+    T: PreimageRepository,
+    F: FinalizedL1Repository,
+    L: L2Client,
+    B: BeaconClient,
+    D: DerivationDriver,
+{
+    pub client: Arc<L>,
+    pub beacon_client: Arc<B>,
+    pub derivation_driver: Arc<D>,
     pub config: Arc<DerivationConfig>,
     pub preimage_repository: Arc<T>,
     pub finalized_l1_repository: Arc<F>,
@@ -20,7 +52,14 @@ pub struct PreimageCollector<T: PreimageRepository, F: FinalizedL1Repository> {
     pub interval_seconds: u64,
 }
 
-impl<T: PreimageRepository, F: FinalizedL1Repository> PreimageCollector<T, F> {
+impl<T, F, L, B, D> PreimageCollector<T, F, L, B, D>
+where
+    T: PreimageRepository,
+    F: FinalizedL1Repository,
+    L: L2Client,
+    B: BeaconClient,
+    D: DerivationDriver,
+{
 
     /// Starts the asynchronous process to continually check and collect claimed metadata.
     ///
@@ -265,8 +304,9 @@ impl<T: PreimageRepository, F: FinalizedL1Repository> PreimageCollector<T, F> {
         for (start, end) in batch {
             let l2_client = self.client.clone();
             let config = self.config.clone();
+            let derivation_driver = self.derivation_driver.clone();
             tasks.push(tokio::spawn(async move {
-                collect(l2_client, config, l1_head_hash, start, end).await
+                collect(l2_client, config, derivation_driver, l1_head_hash, start, end).await
             }));
         }
 
@@ -322,9 +362,10 @@ impl<T: PreimageRepository, F: FinalizedL1Repository> PreimageCollector<T, F> {
 }
 
 /// Collect preimage for range [start, end]
-async fn collect(
-    client: Arc<L2Client>,
+async fn collect<L: L2Client, D: DerivationDriver>(
+    client: Arc<L>,
     config: Arc<DerivationConfig>,
+    derivation_driver: Arc<D>,
     l1_head_hash: B256,
     start: u64,
     end: u64,
@@ -341,13 +382,12 @@ async fn collect(
     };
 
     info!("derivation start : {:?}", &request);
-    let derivation = Derivation { config, request };
     let metadata = PreimageMetadata {
         agreed: start,
         claimed: end,
         l1_head: l1_head_hash,
     };
-    let result = derivation.start().await;
+    let result = derivation_driver.drive(config, request).await;
     match result {
         Ok(preimage) => {
             info!("derivation success : {metadata:?}");
@@ -372,9 +412,22 @@ fn split(agreed: u64, finalized: u64, chunk: u64) -> Vec<(u64, u64)> {
     pairs
 }
 
+
 #[cfg(test)]
 mod tests {
-    use super::split;
+    use super::*;
+    use crate::client::l2_client::{
+        Block, L2Client, L2Header, OutputRootAtBlock, SyncStatus,
+    };
+    use crate::client::beacon_client::BeaconClient;
+    use crate::derivation::host::single::config::Config;
+    use crate::derivation::host::single::handler::DerivationConfig;
+    use alloy_primitives::B256;
+    use axum::async_trait;
+    use clap::Parser;
+    use kona_genesis::RollupConfig;
+    use std::sync::Mutex;
+    use anyhow::anyhow;
 
     fn assert_contiguous(pairs: &[(u64, u64)], agreed: u64, finalized: u64) {
         if pairs.is_empty() {
@@ -418,8 +471,8 @@ mod tests {
     #[test]
     fn test_split_single_chunk_when_chunk_bigger_than_range() {
         let agreed = 5;
-        let finalized = 8; // range size = 3
-        let chunk = 10; // larger than range
+        let finalized = 8;
+        let chunk = 10;
         let pairs = split(agreed, finalized, chunk);
         assert_eq!(pairs, vec![(5, 8)]);
         assert_contiguous(&pairs, agreed, finalized);
@@ -438,7 +491,7 @@ mod tests {
     #[test]
     fn test_split_non_exact_final_chunk() {
         let agreed = 3;
-        let finalized = 11; // range size = 8
+        let finalized = 11;
         let chunk = 4;
         let pairs = split(agreed, finalized, chunk);
         assert_eq!(pairs, vec![(3, 7), (7, 11)]);
@@ -458,10 +511,9 @@ mod tests {
     #[test]
     fn test_split_large_values() {
         let agreed = u64::MAX - 9;
-        let finalized = u64::MAX; // exclusive upper bound, so last pair should end here
+        let finalized = u64::MAX;
         let chunk = 3;
         let pairs = split(agreed, finalized, chunk);
-        // expect: (MAX-9, MAX-6), (MAX-6, MAX-3), (MAX-3, MAX)
         assert_eq!(
             pairs,
             vec![
@@ -471,5 +523,197 @@ mod tests {
             ]
         );
         assert_contiguous(&pairs, agreed, finalized);
+    }
+
+    // Mocks
+    struct MockL2Client {
+        sync_status: Option<SyncStatus>,
+        output_roots: std::collections::HashMap<u64, OutputRootAtBlock>,
+    }
+
+    #[async_trait]
+    impl L2Client for MockL2Client {
+        async fn chain_id(&self) -> anyhow::Result<u64> { Ok(10) }
+        async fn rollup_config(&self) -> anyhow::Result<RollupConfig> { Err(anyhow!("unimplemented")) }
+        async fn sync_status(&self) -> anyhow::Result<SyncStatus> {
+            self.sync_status.clone().ok_or(anyhow!("sync status error"))
+        }
+        async fn output_root_at(&self, number: u64) -> anyhow::Result<OutputRootAtBlock> {
+            self.output_roots.get(&number).cloned().ok_or(anyhow!("no output root"))
+        }
+        async fn get_block_by_number(&self, _number: u64) -> anyhow::Result<Block> { Err(anyhow!("unimplemented")) }
+    }
+
+    struct MockBeaconClient {
+        finality_update: Option<String>,
+    }
+
+    #[async_trait]
+    impl BeaconClient for MockBeaconClient {
+        async fn get_raw_light_client_finality_update(&self) -> anyhow::Result<String> {
+             self.finality_update.clone().ok_or(anyhow!("error"))
+        }
+    }
+
+    struct MockDerivationDriver {
+        calls: Arc<Mutex<Vec<DerivationRequest>>>,
+    }
+
+    #[async_trait]
+    impl DerivationDriver for MockDerivationDriver {
+        async fn drive(&self, _config: Arc<DerivationConfig>, request: DerivationRequest) -> anyhow::Result<Vec<u8>> {
+            self.calls.lock().unwrap().push(request);
+            Ok(vec![0x1, 0x2, 0x3])
+        }
+    }
+
+    struct MockPreimageRepository {
+        upserted: Arc<Mutex<Vec<PreimageMetadata>>>,
+    }
+
+    #[async_trait]
+    impl PreimageRepository for MockPreimageRepository {
+        async fn upsert(&self, metadata: PreimageMetadata, _preimage: Vec<u8>) -> anyhow::Result<()> {
+            self.upserted.lock().unwrap().push(metadata);
+            Ok(())
+        }
+        async fn get(&self, _metadata: &PreimageMetadata) -> anyhow::Result<Vec<u8>> { Ok(vec![]) }
+        async fn list_metadata(&self, _lt: Option<u64>, _gt: Option<u64>) -> Vec<PreimageMetadata> { vec![] }
+        async fn latest_metadata(&self) -> Option<PreimageMetadata> { None }
+        async fn purge_expired(&self) -> anyhow::Result<()> { Ok(()) }
+    }
+
+    struct MockFinalizedL1Repository {
+        upserted: Arc<Mutex<Vec<B256>>>,
+    }
+
+    #[async_trait]
+    impl FinalizedL1Repository for MockFinalizedL1Repository {
+         async fn upsert(&self, l1_head_hash: &B256, _raw_finalized_l1: String) -> anyhow::Result<()> {
+             self.upserted.lock().unwrap().push(*l1_head_hash);
+             Ok(())
+         }
+         async fn get(&self, _l1_head_hash: &B256) -> anyhow::Result<String> { Ok("".into()) }
+         async fn purge_expired(&self) -> anyhow::Result<()> { Ok(()) }
+    }
+
+    #[tokio::test]
+    async fn test_collector_collect() {
+        let l1_head = B256::repeat_byte(0x11);
+        let sync_status = SyncStatus {
+            current_l1: dummy_l1(100),
+            current_l1_finalized: dummy_l1(90),
+            head_l1: dummy_l1(100),
+            safe_l1: dummy_l1(95),
+            finalized_l1: dummy_l1(90),
+            unsafe_l2: dummy_l2(200),
+            safe_l2: dummy_l2(190),
+            finalized_l2: dummy_l2(150),
+            pending_safe_l2: dummy_l2(190),
+        };
+
+        // Prepare L2Client mock
+        let mut output_roots = std::collections::HashMap::new();
+        output_roots.insert(100, dummy_output_root(100)); // agreed
+        output_roots.insert(110, dummy_output_root(110)); // target
+        output_roots.insert(120, dummy_output_root(120)); 
+        output_roots.insert(130, dummy_output_root(130)); 
+        output_roots.insert(140, dummy_output_root(140)); 
+        output_roots.insert(150, dummy_output_root(150)); 
+
+        let l2_client = Arc::new(MockL2Client {
+            sync_status: Some(sync_status),
+            output_roots,
+        });
+
+        // Beacon client mock
+        let update_json = serde_json::json!({
+             "data": {
+                 "finalized_header": {
+                     "execution": {
+                         "block_hash": l1_head,
+                         "block_number": "95"
+                     }
+                 }
+             }
+        }).to_string();
+        let beacon_client = Arc::new(MockBeaconClient {
+            finality_update: Some(update_json),
+        });
+
+        let conf = Config::parse_from(&["exe", "--l1-beacon-address", "http://localhost:5052", "--l2-node-address", "http://localhost:8545", "--l2-rollup-address", "http://localhost:8545", "--preimage-dir", "/tmp", "--finalized-l1-dir", "/tmp", "--initial-claimed-l2", "0"]); // Partial config ok
+        let derivation_config = Arc::new(DerivationConfig {
+            config: conf,
+            rollup_config: None,
+            l2_chain_id: 10,
+            l1_chain_config: None,
+        });
+
+        let mock_derivations = Arc::new(Mutex::new(vec![]));
+        let derivation_driver = Arc::new(MockDerivationDriver { calls: mock_derivations.clone() });
+
+        let mock_preimage_repo = Arc::new(MockPreimageRepository { upserted: Arc::new(Mutex::new(vec![])) });
+        let mock_finalized_repo = Arc::new(MockFinalizedL1Repository { upserted: Arc::new(Mutex::new(vec![])) });
+
+        let collector = PreimageCollector {
+            client: l2_client,
+            beacon_client: beacon_client,
+            derivation_driver: derivation_driver,
+            config: derivation_config,
+            preimage_repository: mock_preimage_repo.clone(),
+            finalized_l1_repository: mock_finalized_repo.clone(),
+            max_distance: 10,
+            max_concurrency: 2,
+            initial_claimed: 0,
+            interval_seconds: 1,
+        };
+
+        // Start from 100
+        let new_head = collector.collect(100).await;
+        
+        assert_eq!(new_head, Some(150)); // Should reach finalized_l2 150
+
+        // Verify derivation calls
+        let calls = mock_derivations.lock().unwrap();
+        // 100->110, 110->120, 120->130, 130->140, 140->150 (5 chunks of size 10)
+        assert_eq!(calls.len(), 5);
+        
+        // Verify finalized L1 saved
+        assert_eq!(mock_finalized_repo.upserted.lock().unwrap().len(), 1);
+        assert_eq!(mock_finalized_repo.upserted.lock().unwrap()[0], l1_head);
+
+        // Verify preimages saved
+        assert_eq!(mock_preimage_repo.upserted.lock().unwrap().len(), 5);
+    }
+
+    fn dummy_l1(number: u64) -> crate::client::l2_client::L1Header {
+        crate::client::l2_client::L1Header {
+            hash: B256::ZERO,
+            number,
+            parent_hash: B256::ZERO,
+            timestamp: 0,
+        }
+    }
+
+    fn dummy_l2(number: u64) -> crate::client::l2_client::L2Header {
+        crate::client::l2_client::L2Header {
+            hash: B256::ZERO,
+            number,
+            parent_hash: B256::ZERO,
+            timestamp: 0,
+            l1origin: crate::client::l2_client::L1Origin { hash: B256::ZERO, number: 0 },
+            sequence_number: 0,
+        }
+    }
+
+    fn dummy_output_root(number: u64) -> OutputRootAtBlock {
+        OutputRootAtBlock {
+             output_root: B256::ZERO,
+             block_ref: crate::client::l2_client::L2BlockRef {
+                 hash: B256::ZERO,
+                 number,
+                 l1_origin: crate::client::l2_client::L1Origin { hash: B256::ZERO, number: 0 },
+             }
+        }
     }
 }

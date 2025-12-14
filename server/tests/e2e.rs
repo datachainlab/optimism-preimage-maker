@@ -4,7 +4,7 @@ use optimism_derivation::derivation::Derivation;
 use optimism_derivation::oracle::MemoryOracleClient;
 use optimism_derivation::types::Preimages;
 use optimism_preimage_maker::client::beacon_client::LightClientFinalityUpdateResponse;
-use optimism_preimage_maker::client::l2_client::L2Client;
+use optimism_preimage_maker::client::l2_client::{HttpL2Client, L2Client};
 use optimism_preimage_maker::data::preimage_repository::PreimageMetadata;
 use optimism_preimage_maker::web::{
     GetFinalizedL1Request, GetPreimageRequest, ListMetadataRequest,
@@ -23,7 +23,7 @@ pub fn init() {
         .try_init();
 }
 
-pub fn get_l2_client() -> L2Client {
+pub fn get_l2_client() -> HttpL2Client {
     let op_node_addr = env::var("L2_ROLLUP_ADDR").unwrap();
     let op_geth_addr = env::var("L2_GETH_ADDR").unwrap();
     tracing::info!(
@@ -31,11 +31,11 @@ pub fn get_l2_client() -> L2Client {
         op_node_addr,
         op_geth_addr
     );
-    L2Client::new(op_node_addr, op_geth_addr)
+    HttpL2Client::new(op_node_addr, op_geth_addr)
 }
 
 pub async fn derivation_in_light_client(
-    l2_client: &L2Client,
+    l2_client: &HttpL2Client,
     preimages: Preimages,
     metadata: PreimageMetadata,
 ) {

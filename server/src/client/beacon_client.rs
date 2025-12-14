@@ -1,10 +1,6 @@
 use alloy_primitives::B256;
+use axum::async_trait;
 use reqwest::Response;
-
-#[derive(Debug, Clone)]
-pub struct BeaconClient {
-    beacon_addr: String,
-}
 
 #[derive(Debug, Clone, serde::Deserialize)]
 pub struct LightClientFinalityUpdateResponse {
@@ -75,12 +71,37 @@ where
     deserializer.deserialize_any(U64StringOrNumber)
 }
 
-impl BeaconClient {
+#[async_trait]
+pub trait BeaconClient: Send + Sync + 'static {
+    async fn get_raw_light_client_finality_update(&self) -> anyhow::Result<String>;
+}
+
+#[derive(Debug, Clone)]
+pub struct HttpBeaconClient {
+    beacon_addr: String,
+}
+
+impl HttpBeaconClient {
     pub fn new(beacon_addr: String) -> Self {
         Self { beacon_addr }
     }
 
-    pub async fn get_raw_light_client_finality_update(&self) -> anyhow::Result<String> {
+    async fn check_response(&self, response: Response) -> anyhow::Result<Response> {
+        if response.status().is_success() {
+            Ok(response)
+        } else {
+            Err(anyhow::anyhow!(
+                "Request failed with status: {} body={:?}",
+                response.status(),
+                response.text().await
+            ))
+        }
+    }
+}
+
+#[async_trait]
+impl BeaconClient for HttpBeaconClient {
+    async fn get_raw_light_client_finality_update(&self) -> anyhow::Result<String> {
         let client = reqwest::Client::new();
         let response = client
             .get(format!(
@@ -94,17 +115,5 @@ impl BeaconClient {
             .text()
             .await
             .map_err(|e| anyhow::anyhow!("Failed to get finality update: {e:?}"))
-    }
-
-    async fn check_response(&self, response: Response) -> anyhow::Result<Response> {
-        if response.status().is_success() {
-            Ok(response)
-        } else {
-            Err(anyhow::anyhow!(
-                "Request failed with status: {} body={:?}",
-                response.status(),
-                response.text().await
-            ))
-        }
     }
 }

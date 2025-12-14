@@ -1,7 +1,8 @@
 #![allow(dead_code)]
-use crate::client::beacon_client::BeaconClient;
+use crate::client::beacon_client::HttpBeaconClient;
+use crate::client::l2_client::HttpL2Client;
 use crate::client::l2_client::L2Client;
-use crate::collector::PreimageCollector;
+use crate::collector::{PreimageCollector, RealDerivationDriver};
 use crate::data::file_finalized_l1_repository::FileFinalizedL1Repository;
 use crate::data::file_preimage_repository::FilePreimageRepository;
 use crate::derivation::host::single::config::Config;
@@ -41,11 +42,11 @@ async fn main() -> anyhow::Result<()> {
         .init();
     info!("start optimism-preimage-maker");
 
-    let l2_client = L2Client::new(
+    let l2_client = HttpL2Client::new(
         config.l2_rollup_address.to_string(),
         config.l2_node_address.to_string(),
     );
-    let beacon_client = BeaconClient::new(config.l1_beacon_address.to_string());
+    let beacon_client = HttpBeaconClient::new(config.l1_beacon_address.to_string());
     let chain_id = l2_client.chain_id().await?;
     let (rollup_config, l1_chain_config) = if ROLLUP_CONFIGS.get(&chain_id).is_none() {
         // devnet only
@@ -84,6 +85,7 @@ async fn main() -> anyhow::Result<()> {
     let collector = PreimageCollector {
         client: Arc::new(l2_client),
         beacon_client: Arc::new(beacon_client),
+        derivation_driver: Arc::new(RealDerivationDriver),
         config: Arc::new(derivation_config),
         max_distance: config.max_preimage_distance,
         initial_claimed: config.initial_claimed_l2,

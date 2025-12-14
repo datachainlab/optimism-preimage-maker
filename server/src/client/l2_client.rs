@@ -1,5 +1,6 @@
 use alloy_primitives::B256;
 use anyhow::Result;
+use axum::async_trait;
 use kona_genesis::RollupConfig;
 use reqwest::Response;
 use serde_json::Value;
@@ -92,12 +93,21 @@ pub struct Block {
 }
 
 #[derive(Debug, Clone)]
-pub struct L2Client {
+pub struct HttpL2Client {
     op_node_addr: String,
     op_geth_addr: String,
 }
 
-impl Default for L2Client {
+#[async_trait]
+pub trait L2Client: Send + Sync + 'static {
+    async fn chain_id(&self) -> Result<u64>;
+    async fn rollup_config(&self) -> Result<RollupConfig>;
+    async fn sync_status(&self) -> Result<SyncStatus>;
+    async fn output_root_at(&self, number: u64) -> Result<OutputRootAtBlock>;
+    async fn get_block_by_number(&self, number: u64) -> Result<Block>;
+}
+
+impl Default for HttpL2Client {
     fn default() -> Self {
         Self::new(
             "http://localhost:7545".into(),
@@ -106,7 +116,7 @@ impl Default for L2Client {
     }
 }
 
-impl L2Client {
+impl HttpL2Client {
     pub fn new(op_node_addr: String, op_geth_addr: String) -> Self {
         Self {
             op_node_addr,
@@ -114,7 +124,22 @@ impl L2Client {
         }
     }
 
-    pub async fn chain_id(&self) -> Result<u64> {
+    async fn check_response(&self, response: Response) -> Result<Response> {
+        if response.status().is_success() {
+            Ok(response)
+        } else {
+            Err(anyhow::anyhow!(
+                "Request failed with status: {} body={:?}",
+                response.status(),
+                response.text().await
+            ))
+        }
+    }
+}
+
+#[async_trait]
+impl L2Client for HttpL2Client {
+    async fn chain_id(&self) -> Result<u64> {
         let client = reqwest::Client::new();
         let body = RpcRequest {
             method: "eth_chainId".into(),
@@ -131,7 +156,7 @@ impl L2Client {
         Ok(u64::from_str_radix(&result.result[2..], 16)?)
     }
 
-    pub async fn rollup_config(&self) -> Result<RollupConfig> {
+    async fn rollup_config(&self) -> Result<RollupConfig> {
         let client = reqwest::Client::new();
         let body = RpcRequest {
             method: "optimism_rollupConfig".into(),
@@ -147,7 +172,7 @@ impl L2Client {
         let result: RpcResult<RollupConfig> = response.json().await?;
         Ok(result.result)
     }
-    pub async fn sync_status(&self) -> Result<SyncStatus> {
+    async fn sync_status(&self) -> Result<SyncStatus> {
         let client = reqwest::Client::new();
         let body = RpcRequest {
             method: "optimism_syncStatus".into(),
@@ -164,7 +189,7 @@ impl L2Client {
         Ok(result.result)
     }
 
-    pub async fn output_root_at(&self, number: u64) -> Result<OutputRootAtBlock> {
+    async fn output_root_at(&self, number: u64) -> Result<OutputRootAtBlock> {
         let client = reqwest::Client::new();
         let body = RpcRequest {
             method: "optimism_outputAtBlock".into(),
@@ -182,7 +207,7 @@ impl L2Client {
         Ok(result.result)
     }
 
-    pub async fn get_block_by_number(&self, number: u64) -> Result<Block> {
+    async fn get_block_by_number(&self, number: u64) -> Result<Block> {
         let client = reqwest::Client::new();
         let body = RpcRequest {
             method: "eth_getBlockByNumber".into(),
@@ -198,17 +223,5 @@ impl L2Client {
         let response = self.check_response(response).await?;
         let result: RpcResult<Block> = response.json().await?;
         Ok(result.result)
-    }
-
-    async fn check_response(&self, response: Response) -> Result<Response> {
-        if response.status().is_success() {
-            Ok(response)
-        } else {
-            Err(anyhow::anyhow!(
-                "Request failed with status: {} body={:?}",
-                response.status(),
-                response.text().await
-            ))
-        }
     }
 }

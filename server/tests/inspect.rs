@@ -13,7 +13,9 @@ mod e2e;
 use crate::e2e::derivation_in_light_client;
 use e2e::get_l2_client;
 use e2e::init;
-use optimism_preimage_maker::client::l2_client::{Block, RpcRequest, RpcResult};
+use optimism_preimage_maker::client::l2_client::{
+    Block, HttpL2Client, L2Client, RpcRequest, RpcResult,
+};
 use optimism_preimage_maker::data::preimage_repository::PreimageMetadata;
 
 async fn get_block_by_number(number: u64, l1_geth_addr: &str) -> anyhow::Result<Block> {
