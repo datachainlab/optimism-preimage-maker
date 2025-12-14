@@ -83,27 +83,32 @@ where
         }
     }
 
-    /// Asynchronously collects and processes data starting from a specified `latest_l2` value,
-    /// attempting to derive L2 data up to the finalized L2 number obtained from the sync status.
+    /// Collects preimage data based on synchronization status from the L2 chain and persists important finality
+    /// information such as the latest finalized L1 head hash.
     ///
-    /// 1. The method retrieves the synchronization status of the client and checks if further
-    ///    processing is needed by comparing the `latest_l2` with the finalized L2 number. If the
-    ///    finalized L2 number is less than or equal to `latest_l2`, no further processing is performed.
+    /// 1. **Check Synchronization Status**:
+    ///    - Fetches synchronization status from the underlying L2 client.
+    ///    - If the L2’s finalized block number (`sync_status.finalized_l2.number`) is less than or equal to
+    ///      the provided `latest_l2`, no further processing is performed and `None` is returned.
     ///
-    /// 2. If the sync status is successfully retrieved, the method then fetches the latest L1 head hash
-    ///    and raw finality L1 data required for L2 derivation. If unsuccessful, the function exits early.
+    /// 2. **Retrieve L1 Head Hash**:
+    ///    - Obtains the hash of the latest L1 head and its raw finality data for L2 derivation purposes.
+    ///    - Returns `None` if this operation fails.
     ///
-    /// 3. It splits the range between `latest_l2` and the finalized L2 number into smaller batches to
-    ///    be processed in parallel. The batches are configured based on a maximum distance and concurrency.
+    /// 3. **Batch Collection Preparation**:
+    ///    - Prepares a batch of block ranges within the defined constraints (`max_concurrency` and `max_distance`)
+    ///      for processing, starting from the provided `latest_l2` and up to the finalized L2 block in the
+    ///      synchronization status.
     ///
-    /// 4. The finalized L1 head hash along with its associated raw finality data is saved to the database.
-    ///    Any errors during this step are logged.
+    /// 4. **Store Finalized L1 Hash**:
+    ///    - Attempts to save the finalized L1 head hash and its associated finality data to the repository.
+    ///      Logs errors if the operation fails but continues processing.
     ///
-    /// 5. For each batch, a parallel collection process is performed using `parallel_collect`. Any errors
-    ///    encountered are logged, and the process stops for the current batch to retry from the latest state.
+    /// 5. **Parallel Collection**:
+    ///    - Executes collection tasks for the prepared block batch in parallel using the computed L1 head hash.
+    ///    - Logs and returns `None` on failure, or the latest L2 block number if successful.
     ///
     async fn collect(&self, latest_l2: u64) -> Option<u64> {
-        let mut latest_l2 = latest_l2;
         // Check sync status
         let sync_status = self.client.sync_status().await;
         let sync_status = match sync_status {
@@ -127,18 +132,18 @@ where
         let (l1_head_hash, raw_finality_l1) = self.get_l1_head_hash(&sync_status).await?;
 
         // Collect preimage from latest_l2 to finalized_l2
-        let pairs = split(
-            latest_l2,
-            sync_status.finalized_l2.number,
-            self.max_distance,
-        );
-        let batches = pairs.chunks(self.max_concurrency.max(1));
-        info!(
-            "derivation length={}, batch-size={}, target={:?}",
-            pairs.len(),
-            batches.len(),
-            batches
-        );
+        let mut batch = Vec::new();
+        let mut current = latest_l2;
+        for _ in 0..self.max_concurrency {
+            if current >= sync_status.finalized_l2.number {
+                break;
+            }
+            let end = std::cmp::min(current + self.max_distance, sync_status.finalized_l2.number);
+            batch.push((current, end));
+            current = end;
+        }
+
+        info!("derivation batch={:?}", batch);
 
         // Save finalized_l1
         if let Err(e) = self
@@ -152,20 +157,16 @@ where
             );
         }
 
-        for batch in batches {
-            match self.parallel_collect(l1_head_hash, batch.to_vec()).await {
-                Ok(end) => latest_l2 = end.unwrap_or(latest_l2),
-                Err(e) => {
-                    error!(
-                        "Failed to collect preimage in current batch. try collect from {}: {:?}",
-                        latest_l2, e
-                    );
-                    break;
-                }
-            }
+        if batch.is_empty() {
+            return None;
         }
 
-        Some(latest_l2)
+        self.parallel_collect(l1_head_hash, batch)
+            .await
+            .unwrap_or_else(|e| {
+                error!("Failed to collect preimages {:?}", e);
+                None
+            })
     }
 
     /// Asynchronously retrieves the latest finalized L1 block hash for use in derivation.
@@ -182,6 +183,7 @@ where
     /// - If a valid and up-to-date finalized block is found, it returns the L1 block's hash and raw response.
     ///
     async fn get_l1_head_hash(&self, sync_status: &SyncStatus) -> Option<(B256, String)> {
+        let mut retry_count = 0;
         let (finality_l1, raw_finality_l1) = loop {
             let raw_finality_l1 = match self
                 .beacon_client
@@ -204,7 +206,18 @@ where
                 };
             let block_number = finality_l1.data.finalized_header.execution.block_number;
             if block_number < sync_status.finalized_l1.number {
-                warn!("finality_l1 = {:?} delayed.", block_number);
+                if retry_count > 30 {
+                    error!(
+                        "finality_l1 = {:?} delayed. retry_count = {}",
+                        block_number, retry_count
+                    );
+                } else {
+                    warn!(
+                        "finality_l1 = {:?} delayed. retry_count = {}",
+                        block_number, retry_count
+                    );
+                }
+                retry_count += 1;
                 time::sleep(time::Duration::from_secs(10)).await;
                 continue;
             }
@@ -331,18 +344,6 @@ async fn collect<L: L2Client, D: DerivationDriver>(
     }
 }
 
-/// Split range [agreed, finalized] into chunks of size chunk.
-fn split(agreed: u64, finalized: u64, chunk: u64) -> Vec<(u64, u64)> {
-    let mut pairs: Vec<(u64, u64)> = Vec::new();
-    let mut start = agreed;
-    while start < finalized {
-        let end = std::cmp::min(start + chunk, finalized);
-        pairs.push((start, end));
-        start = end;
-    }
-    pairs
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -356,99 +357,6 @@ mod tests {
     use clap::Parser;
     use kona_genesis::RollupConfig;
     use std::sync::Mutex;
-
-    fn assert_contiguous(pairs: &[(u64, u64)], agreed: u64, finalized: u64) {
-        if pairs.is_empty() {
-            assert!(agreed >= finalized, "empty implies agreed >= finalized");
-            return;
-        }
-        assert_eq!(
-            pairs.first().unwrap().0,
-            agreed,
-            "first start must equal agreed"
-        );
-        assert_eq!(
-            pairs.last().unwrap().1,
-            finalized,
-            "last end must equal finalized"
-        );
-        for w in pairs.windows(2) {
-            let (s1, e1) = w[0];
-            let (s2, e2) = w[1];
-            assert!(s1 < e1, "each segment must be non-empty");
-            assert_eq!(
-                e1, s2,
-                "segments must be contiguous without gaps or overlaps"
-            );
-            assert!(e2 <= finalized);
-        }
-    }
-
-    #[test]
-    fn test_split_empty_range() {
-        let agreed = 10;
-        let finalized = 10;
-        let chunk = 5;
-        let pairs = split(agreed, finalized, chunk);
-        assert!(pairs.is_empty());
-    }
-
-    #[test]
-    fn test_split_single_chunk_when_chunk_bigger_than_range() {
-        let agreed = 5;
-        let finalized = 8;
-        let chunk = 10;
-        let pairs = split(agreed, finalized, chunk);
-        assert_eq!(pairs, vec![(5, 8)]);
-        assert_contiguous(&pairs, agreed, finalized);
-    }
-
-    #[test]
-    fn test_split_exact_multiples() {
-        let agreed = 0;
-        let finalized = 10;
-        let chunk = 2;
-        let pairs = split(agreed, finalized, chunk);
-        assert_eq!(pairs, vec![(0, 2), (2, 4), (4, 6), (6, 8), (8, 10)]);
-        assert_contiguous(&pairs, agreed, finalized);
-    }
-
-    #[test]
-    fn test_split_non_exact_final_chunk() {
-        let agreed = 3;
-        let finalized = 11;
-        let chunk = 4;
-        let pairs = split(agreed, finalized, chunk);
-        assert_eq!(pairs, vec![(3, 7), (7, 11)]);
-        assert_contiguous(&pairs, agreed, finalized);
-    }
-
-    #[test]
-    fn test_split_chunk_one() {
-        let agreed = 2;
-        let finalized = 5;
-        let chunk = 1;
-        let pairs = split(agreed, finalized, chunk);
-        assert_eq!(pairs, vec![(2, 3), (3, 4), (4, 5)]);
-        assert_contiguous(&pairs, agreed, finalized);
-    }
-
-    #[test]
-    fn test_split_large_values() {
-        let agreed = u64::MAX - 9;
-        let finalized = u64::MAX;
-        let chunk = 3;
-        let pairs = split(agreed, finalized, chunk);
-        assert_eq!(
-            pairs,
-            vec![
-                (u64::MAX - 9, u64::MAX - 6),
-                (u64::MAX - 6, u64::MAX - 3),
-                (u64::MAX - 3, u64::MAX),
-            ]
-        );
-        assert_contiguous(&pairs, agreed, finalized);
-    }
 
     // Mocks
     struct MockL2Client {
@@ -650,19 +558,19 @@ mod tests {
         // Start from 100
         let new_head = collector.collect(100).await;
 
-        assert_eq!(new_head, Some(150)); // Should reach finalized_l2 150
+        assert_eq!(new_head, Some(120)); // Should reach limit 120 (100 + 2*10)
 
         // Verify derivation calls
         let calls = mock_derivations.lock().unwrap();
-        // 100->110, 110->120, 120->130, 130->140, 140->150 (5 chunks of size 10)
-        assert_eq!(calls.len(), 5);
+        // 100->110, 110->120 (2 chunks of size 10)
+        assert_eq!(calls.len(), 2);
 
         // Verify finalized L1 saved
         assert_eq!(mock_finalized_repo.upserted.lock().unwrap().len(), 1);
         assert_eq!(mock_finalized_repo.upserted.lock().unwrap()[0], l1_head);
 
         // Verify preimages saved
-        assert_eq!(mock_preimage_repo.upserted.lock().unwrap().len(), 5);
+        assert_eq!(mock_preimage_repo.upserted.lock().unwrap().len(), 2);
     }
 
     fn dummy_l1(number: u64) -> crate::client::l2_client::L1Header {
