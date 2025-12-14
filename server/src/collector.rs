@@ -150,25 +150,24 @@ impl<T: PreimageRepository, F: FinalizedL1Repository> PreimageCollector<T, F> {
         // Wait for all tasks to finish
         let mut results = vec![];
         for task in tasks {
-            results.push(task.await);
+            results.push(task.await??);
         }
 
         // Commit
+        self.commit_batch(results).await
+    }
+
+    async fn commit_batch(&self, mut successes: Vec<(PreimageMetadata, Vec<u8>)>) -> anyhow::Result<Option<u64>> {
+
+        // Sort by claimed block number to ensure deterministic order of preimages
+        successes.sort_by(|a, b| a.0.claimed.cmp(&b.0.claimed));
+
         let mut latest_l2 = None;
-        for result in results {
-            // preimage must be sequentially stored in db, so we can restart from latest_l2 when failed to save preimage.
-            let result = result??;
+        for (metadata, preimage) in successes {
             // Commit preimages to db
-            let (metadata, preimage) = result;
             let claimed = metadata.claimed;
             self.preimage_repository.upsert(metadata, preimage).await?;
-            if let Some(value) = latest_l2 {
-                if value < claimed {
-                    latest_l2 = Some(claimed)
-                }
-            }else {
-                latest_l2 = Some(claimed);
-            }
+            latest_l2 = Some(claimed);
         }
         Ok(latest_l2)
     }

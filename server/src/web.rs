@@ -118,7 +118,7 @@ async fn list_metadata(
     }
     if payload.lt_claimed <= payload.gt_claimed {
         error!(
-            "invalid lt_claimed {} <= gt_claimed {}",
+           "invalid range: lt_claimed ({}) must be greater than gt_claimed ({})",
             payload.lt_claimed, payload.gt_claimed,
         );
         return (StatusCode::BAD_REQUEST, Json(vec![]));

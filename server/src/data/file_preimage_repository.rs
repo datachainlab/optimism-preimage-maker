@@ -119,7 +119,7 @@ impl PreimageRepository for FilePreimageRepository {
             let created = metadata.created()?;
             let expired = created
                 .checked_add(self.ttl)
-                .ok_or_else(|| anyhow::anyhow!("expired preimage metadata is too new"))?;
+                .ok_or_else(|| anyhow::anyhow!("TTL duration overflow when calculating expiration time"))?;
             if now >= expired {
                 target.push(entry);
             }
@@ -129,7 +129,14 @@ impl PreimageRepository for FilePreimageRepository {
         // delete files from disk
         let mut target_cached = vec![];
         for entry in target {
-            let name = entry.file_name().to_str().unwrap().to_string();
+            let name_osstr = entry.file_name();
+            let name = match name_osstr.to_str() {
+                Some(s) => s.to_string(),
+                None => {
+                    error!("Skipping file with non-UTF-8 filename: {:?}", name_osstr);
+                    continue;
+                }
+            };
             fs::remove_file(entry.path()).await?;
             if let Ok(v) = PreimageMetadata::try_from(name.as_str()) {
                 target_cached.push(v);

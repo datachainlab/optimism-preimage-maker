@@ -53,7 +53,7 @@ server-up:
 		--initial-claimed-l2=103 \
 		--ttl=1800 \
 		--max-preimage-distance=100 \
-        --purger-interval-seconds=100
+		--purger-interval-seconds=100
 
 .PHONY: test
 test:
