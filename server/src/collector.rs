@@ -162,7 +162,13 @@ impl<T: PreimageRepository, F: FinalizedL1Repository> PreimageCollector<T, F> {
             let (metadata, preimage) = result;
             let claimed = metadata.claimed;
             self.preimage_repository.upsert(metadata, preimage).await?;
-            latest_l2 = Some(claimed);
+            if let Some(value) = latest_l2 {
+                if value < claimed {
+                    latest_l2 = Some(claimed)
+                }
+            }else {
+                latest_l2 = Some(claimed);
+            }
         }
         Ok(latest_l2)
     }
