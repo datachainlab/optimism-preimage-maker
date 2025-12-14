@@ -16,6 +16,13 @@ pub struct FilePreimageRepository {
 
 impl FilePreimageRepository {
     pub async fn new(parent_dir: &str, ttl: time::Duration) -> anyhow::Result<Self> {
+        let path = std::path::Path::new(parent_dir);
+        if !path.exists() {
+            return Err(anyhow::anyhow!("directory does not exist: {parent_dir}"));
+        }
+        if !path.is_dir() {
+            return Err(anyhow::anyhow!("path is not a directory: {parent_dir}"));
+        }
         let metadata_list = Self::load_metadata(parent_dir).await?;
         info!("loaded metadata: {:?}", metadata_list.len());
         Ok(Self {
@@ -194,6 +201,13 @@ mod tests {
         let latest = repo.latest_metadata().await;
         assert!(latest.is_none());
         tokio::fs::remove_dir_all(dir).await.ok();
+    }
+
+    #[tokio::test]
+    async fn test_new_with_non_existent_dir() {
+        let res = FilePreimageRepository::new("/path/to/non/existent/dir", Duration::from_secs(1)).await;
+        assert!(res.is_err());
+        assert_eq!(res.err().unwrap().to_string(), "directory does not exist: /path/to/non/existent/dir");
     }
 
     #[tokio::test]
