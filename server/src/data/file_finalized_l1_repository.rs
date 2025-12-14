@@ -13,6 +13,13 @@ pub struct FileFinalizedL1Repository {
 }
 impl FileFinalizedL1Repository {
     pub fn new(parent_dir: &str, ttl: Duration) -> anyhow::Result<Self> {
+        let path = std::path::Path::new(parent_dir);
+        if !path.exists() {
+            return Err(anyhow::anyhow!("directory does not exist: {parent_dir}"));
+        }
+        if !path.is_dir() {
+            return Err(anyhow::anyhow!("path is not a directory: {parent_dir}"));
+        }
         Ok(Self {
             dir: parent_dir.to_string(),
             ttl,
@@ -65,5 +72,85 @@ impl FinalizedL1Repository for FileFinalizedL1Repository {
             }
         }
         Ok(())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::time::Duration;
+
+    #[test]
+    fn test_new_with_non_existent_dir() {
+        let res = FileFinalizedL1Repository::new("/path/to/non/existent/dir", Duration::from_secs(1));
+        assert!(res.is_err());
+        assert_eq!(res.err().unwrap().to_string(), "directory does not exist: /path/to/non/existent/dir");
+    }
+
+    #[test]
+    fn test_new_with_existing_dir() {
+        let temp = std::env::temp_dir();
+        let path = temp.to_str().unwrap();
+        let res = FileFinalizedL1Repository::new(path, Duration::from_secs(1));
+        assert!(res.is_ok());
+    }
+
+    fn unique_test_dir(suffix: &str) -> String {
+        let mut dir = std::env::temp_dir();
+        let ts = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_nanos();
+        let pid = std::process::id();
+        dir.push(format!("optimism_preimage_maker_test_l1_{pid}_{ts}_{suffix}"));
+        std::fs::create_dir_all(&dir).expect("create temp dir");
+        dir.to_string_lossy().to_string()
+    }
+
+    #[tokio::test]
+    async fn test_upsert_and_get() {
+        let dir = unique_test_dir("upsert");
+        let repo = FileFinalizedL1Repository::new(&dir, Duration::from_secs(1)).expect("new repo");
+
+        let h = B256::from([1u8; 32]);
+        let data = "some json data".to_string();
+
+        repo.upsert(&h, data.clone()).await.expect("upsert");
+
+        let got = repo.get(&h).await.expect("get");
+        assert_eq!(got, data);
+
+        let missing = B256::from([2u8; 32]);
+        let res = repo.get(&missing).await;
+        assert!(res.is_err());
+
+        tokio::fs::remove_dir_all(dir).await.ok();
+    }
+
+    #[tokio::test]
+    async fn test_purge_expired() {
+        let dir = unique_test_dir("purge");
+        // Short TTL
+        let repo = FileFinalizedL1Repository::new(&dir, Duration::from_millis(100)).expect("new repo");
+
+        let h1 = B256::from([0xaau8; 32]);
+        let data = "old data".to_string();
+        repo.upsert(&h1, data).await.expect("upsert h1");
+
+        // Wait for expiration
+        tokio::time::sleep(Duration::from_millis(200)).await;
+
+        let h2 = B256::from([0xbbu8; 32]);
+        repo.upsert(&h2, "new data".to_string()).await.expect("upsert h2");
+
+        // Purge should remove h1 but keep h2 (assuming touch updates mod time or we rely on creation time)
+        // Note: The implementation uses `metadata.created()`. File creation time is usually fixed.
+        // So h1 is created -> wait -> h2 created. h1 should be old enough. h2 is new.
+        repo.purge_expired().await.expect("purge");
+
+        assert!(repo.get(&h1).await.is_err(), "h1 should be purged");
+        assert!(repo.get(&h2).await.is_ok(), "h2 should be kept");
+
+        tokio::fs::remove_dir_all(dir).await.ok();
     }
 }
