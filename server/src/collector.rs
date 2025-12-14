@@ -609,4 +609,218 @@ mod tests {
             },
         }
     }
+    #[tokio::test]
+    async fn test_collector_sync_status_reached() {
+        let sync_status = SyncStatus {
+            current_l1: dummy_l1(100),
+            current_l1_finalized: dummy_l1(90),
+            head_l1: dummy_l1(100),
+            safe_l1: dummy_l1(95),
+            finalized_l1: dummy_l1(90),
+            unsafe_l2: dummy_l2(200),
+            safe_l2: dummy_l2(190),
+            finalized_l2: dummy_l2(150),
+            pending_safe_l2: dummy_l2(190),
+        };
+
+        let l2_client = Arc::new(MockL2Client {
+            sync_status: Some(sync_status),
+            output_roots: std::collections::HashMap::new(),
+        });
+
+        // Beacon client mock (not used if sync status check fails early)
+        let beacon_client = Arc::new(MockBeaconClient {
+            finality_update: None,
+        });
+
+        let conf = Config::parse_from(["exe", "--initial-claimed-l2", "0"]); // Minimal valid config
+        let derivation_config = Arc::new(DerivationConfig {
+            config: conf,
+            rollup_config: None,
+            l2_chain_id: 10,
+            l1_chain_config: None,
+        });
+
+        let derivation_driver = Arc::new(MockDerivationDriver {
+            calls: Arc::new(Mutex::new(vec![])),
+        });
+
+        let mock_preimage_repo = Arc::new(MockPreimageRepository {
+            upserted: Arc::new(Mutex::new(vec![])),
+        });
+        let mock_finalized_repo = Arc::new(MockFinalizedL1Repository {
+            upserted: Arc::new(Mutex::new(vec![])),
+        });
+
+        let collector = PreimageCollector {
+            client: l2_client,
+            beacon_client,
+            derivation_driver,
+            config: derivation_config,
+            preimage_repository: mock_preimage_repo,
+            finalized_l1_repository: mock_finalized_repo,
+            max_distance: 10,
+            max_concurrency: 2,
+            initial_claimed: 0,
+            interval_seconds: 1,
+        };
+
+        // latest_l2 (150) == finalized_l2 (150)
+        let result = collector.collect(150).await;
+        assert_eq!(result, None);
+
+        // latest_l2 (160) > finalized_l2 (150)
+        let result = collector.collect(160).await;
+        assert_eq!(result, None);
+    }
+
+    #[tokio::test]
+    async fn test_collector_beacon_client_error() {
+        let sync_status = SyncStatus {
+            current_l1: dummy_l1(100),
+            current_l1_finalized: dummy_l1(90),
+            head_l1: dummy_l1(100),
+            safe_l1: dummy_l1(95),
+            finalized_l1: dummy_l1(90),
+            unsafe_l2: dummy_l2(200),
+            safe_l2: dummy_l2(190),
+            finalized_l2: dummy_l2(150),
+            pending_safe_l2: dummy_l2(190),
+        };
+
+        let l2_client = Arc::new(MockL2Client {
+            sync_status: Some(sync_status),
+            output_roots: std::collections::HashMap::new(),
+        });
+
+        // Beacon client mock returning error (None)
+        let beacon_client = Arc::new(MockBeaconClient {
+            finality_update: None,
+        });
+
+        let conf = Config::parse_from(["exe", "--initial-claimed-l2", "0"]);
+        let derivation_config = Arc::new(DerivationConfig {
+            config: conf,
+            rollup_config: None,
+            l2_chain_id: 10,
+            l1_chain_config: None,
+        });
+
+        let derivation_driver = Arc::new(MockDerivationDriver {
+            calls: Arc::new(Mutex::new(vec![])),
+        });
+
+        let mock_preimage_repo = Arc::new(MockPreimageRepository {
+            upserted: Arc::new(Mutex::new(vec![])),
+        });
+        let mock_finalized_repo = Arc::new(MockFinalizedL1Repository {
+            upserted: Arc::new(Mutex::new(vec![])),
+        });
+
+        let collector = PreimageCollector {
+            client: l2_client,
+            beacon_client,
+            derivation_driver,
+            config: derivation_config,
+            preimage_repository: mock_preimage_repo,
+            finalized_l1_repository: mock_finalized_repo,
+            max_distance: 10,
+            max_concurrency: 2,
+            initial_claimed: 0,
+            interval_seconds: 1,
+        };
+
+        // Should return None due to beacon client error
+        let result = collector.collect(100).await;
+        assert_eq!(result, None);
+    }
+
+    struct MockDerivationDriverError;
+    #[async_trait]
+    impl DerivationDriver for MockDerivationDriverError {
+        async fn drive(
+            &self,
+            _config: Arc<DerivationConfig>,
+            _request: DerivationRequest,
+        ) -> anyhow::Result<Vec<u8>> {
+            Err(anyhow!("derivation error"))
+        }
+    }
+
+    #[tokio::test]
+    async fn test_collector_derivation_failure() {
+        let l1_head = B256::repeat_byte(0x11);
+        let sync_status = SyncStatus {
+            current_l1: dummy_l1(100),
+            current_l1_finalized: dummy_l1(90),
+            head_l1: dummy_l1(100),
+            safe_l1: dummy_l1(95),
+            finalized_l1: dummy_l1(90),
+            unsafe_l2: dummy_l2(200),
+            safe_l2: dummy_l2(190),
+            finalized_l2: dummy_l2(150),
+            pending_safe_l2: dummy_l2(190),
+        };
+
+        let mut output_roots = std::collections::HashMap::new();
+        output_roots.insert(100, dummy_output_root(100));
+        output_roots.insert(110, dummy_output_root(110));
+
+        let l2_client = Arc::new(MockL2Client {
+            sync_status: Some(sync_status),
+            output_roots,
+        });
+
+        let update_json = serde_json::json!({
+             "data": {
+                 "finalized_header": {
+                     "execution": {
+                         "block_hash": l1_head,
+                         "block_number": "95"
+                     }
+                 }
+             }
+        })
+        .to_string();
+        let beacon_client = Arc::new(MockBeaconClient {
+            finality_update: Some(update_json),
+        });
+
+        let conf = Config::parse_from(["exe", "--initial-claimed-l2", "0"]);
+        let derivation_config = Arc::new(DerivationConfig {
+            config: conf,
+            rollup_config: None,
+            l2_chain_id: 10,
+            l1_chain_config: None,
+        });
+
+        let derivation_driver = Arc::new(MockDerivationDriverError); // Fails derivation
+
+        let mock_preimage_repo = Arc::new(MockPreimageRepository {
+            upserted: Arc::new(Mutex::new(vec![])),
+        });
+        let mock_finalized_repo = Arc::new(MockFinalizedL1Repository {
+            upserted: Arc::new(Mutex::new(vec![])),
+        });
+
+        let collector = PreimageCollector {
+            client: l2_client,
+            beacon_client,
+            derivation_driver,
+            config: derivation_config,
+            preimage_repository: mock_preimage_repo.clone(),
+            finalized_l1_repository: mock_finalized_repo,
+            max_distance: 10,
+            max_concurrency: 2,
+            initial_claimed: 0,
+            interval_seconds: 1,
+        };
+
+        // Should return None because derivation failed (triggering retry)
+        let result = collector.collect(100).await;
+        assert_eq!(result, None);
+
+        // Verify preimages were NOT saved
+        assert_eq!(mock_preimage_repo.upserted.lock().unwrap().len(), 0);
+    }
 }
