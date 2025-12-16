@@ -275,7 +275,7 @@ where
         }
 
         // Commit
-        self.commit_batch(results).await
+        Ok(self.commit_batch(results).await)
     }
 
     /// Commits a batch of preimages to the database and returns the latest claimed block number.
@@ -287,10 +287,7 @@ where
     ///   invoking the `upsert` method of the `preimage_repository`.
     /// - Tracks and updates the latest claimed block number during the iteration.
     ///
-    async fn commit_batch(
-        &self,
-        mut successes: Vec<(PreimageMetadata, Vec<u8>)>,
-    ) -> anyhow::Result<Option<u64>> {
+    async fn commit_batch(&self, mut successes: Vec<(PreimageMetadata, Vec<u8>)>) -> Option<u64> {
         // Sort by claimed block number to ensure deterministic order of preimages
         successes.sort_by(|a, b| a.0.claimed.cmp(&b.0.claimed));
 
@@ -298,10 +295,13 @@ where
         for (metadata, preimage) in successes {
             // Commit preimages to db
             let claimed = metadata.claimed;
-            self.preimage_repository.upsert(metadata, preimage).await?;
+            if let Err(e) = self.preimage_repository.upsert(metadata, preimage).await {
+                error!("Failed to upsert preimage: {:?}", e);
+                return latest_l2;
+            }
             latest_l2 = Some(claimed);
         }
-        Ok(latest_l2)
+        latest_l2
     }
 }
 
@@ -822,5 +822,126 @@ mod tests {
 
         // Verify preimages were NOT saved
         assert_eq!(mock_preimage_repo.upserted.lock().unwrap().len(), 0);
+    }
+
+    struct MockPreimageRepositoryPartialError {
+        upserted: Arc<Mutex<Vec<PreimageMetadata>>>,
+        fail_index: usize,
+    }
+
+    #[async_trait]
+    impl PreimageRepository for MockPreimageRepositoryPartialError {
+        async fn upsert(
+            &self,
+            metadata: PreimageMetadata,
+            _preimage: Vec<u8>,
+        ) -> anyhow::Result<()> {
+            let mut upserted = self.upserted.lock().unwrap();
+            if upserted.len() == self.fail_index {
+                return Err(anyhow!("partial error"));
+            }
+            upserted.push(metadata);
+            Ok(())
+        }
+        async fn get(&self, _metadata: &PreimageMetadata) -> anyhow::Result<Vec<u8>> {
+            Ok(vec![])
+        }
+        async fn list_metadata(&self, _lt: Option<u64>, _gt: Option<u64>) -> Vec<PreimageMetadata> {
+            vec![]
+        }
+        async fn latest_metadata(&self) -> Option<PreimageMetadata> {
+            None
+        }
+        async fn purge_expired(&self) -> anyhow::Result<()> {
+            Ok(())
+        }
+    }
+
+    #[tokio::test]
+    async fn test_collector_commit_batch_partial_failure() {
+        let l1_head = B256::repeat_byte(0x11);
+        let sync_status = SyncStatus {
+            current_l1: dummy_l1(100),
+            current_l1_finalized: dummy_l1(90),
+            head_l1: dummy_l1(100),
+            safe_l1: dummy_l1(95),
+            finalized_l1: dummy_l1(90),
+            unsafe_l2: dummy_l2(200),
+            safe_l2: dummy_l2(190),
+            finalized_l2: dummy_l2(150),
+            pending_safe_l2: dummy_l2(190),
+        };
+
+        let mut output_roots = std::collections::HashMap::new();
+        output_roots.insert(100, dummy_output_root(100));
+        output_roots.insert(110, dummy_output_root(110));
+        output_roots.insert(120, dummy_output_root(120));
+
+        let l2_client = Arc::new(MockL2Client {
+            sync_status: Some(sync_status),
+            output_roots,
+        });
+
+        let update_json = serde_json::json!({
+             "data": {
+                 "finalized_header": {
+                     "execution": {
+                         "block_hash": l1_head,
+                         "block_number": "95"
+                     }
+                 }
+             }
+        })
+        .to_string();
+        let beacon_client = Arc::new(MockBeaconClient {
+            finality_update: Some(update_json),
+        });
+
+        let conf = Config::parse_from(["exe", "--initial-claimed-l2", "0"]);
+        let derivation_config = Arc::new(DerivationConfig {
+            config: conf,
+            rollup_config: None,
+            l2_chain_id: 10,
+            l1_chain_config: None,
+        });
+
+        let derivation_driver = Arc::new(MockDerivationDriver {
+            calls: Arc::new(Mutex::new(vec![])),
+        });
+
+        // Fail on the 2nd upsert (index 1)
+        let mock_preimage_repo = Arc::new(MockPreimageRepositoryPartialError {
+            upserted: Arc::new(Mutex::new(vec![])),
+            fail_index: 1,
+        });
+        let mock_finalized_repo = Arc::new(MockFinalizedL1Repository {
+            upserted: Arc::new(Mutex::new(vec![])),
+        });
+
+        let collector = PreimageCollector {
+            client: l2_client,
+            beacon_client,
+            derivation_driver,
+            config: derivation_config,
+            preimage_repository: mock_preimage_repo.clone(),
+            finalized_l1_repository: mock_finalized_repo,
+            max_distance: 10,
+            max_concurrency: 2,
+            initial_claimed: 0,
+            interval_seconds: 1,
+        };
+
+        // Collect from 100.
+        // Batch will be [100->110, 110->120].
+        // 1st upsert (110) succeeds.
+        // 2nd upsert (120) fails.
+        // Should return Some(110).
+        let result = collector.collect(100).await;
+
+        assert_eq!(result, Some(110));
+
+        // Verify only 1 preimage saved
+        assert_eq!(mock_preimage_repo.upserted.lock().unwrap().len(), 1);
+        assert_eq!(mock_preimage_repo.upserted.lock().unwrap()[0].claimed, 110);
     }
 }
