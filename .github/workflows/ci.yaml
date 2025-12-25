@@ -51,7 +51,7 @@ jobs:
       - name: Install Foundry
         uses: foundry-rs/foundry-toolchain@v1
         with:
-            version: 'v1.0.0'
+          version: 'v1.0.0'
       - name: Install kurtosis
         run: |
           sudo apt-get install jq

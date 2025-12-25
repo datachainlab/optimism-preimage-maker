@@ -1,1 +1,0 @@
-curl -X POST http://localhost:10080/derivation -H "Content-Type: application/json" -d @body.json

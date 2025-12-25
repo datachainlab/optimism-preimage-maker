@@ -37,6 +37,8 @@ wait:
 
 .PHONY: server-up
 server-up:
+	mkdir -p .preimage && true
+	mkdir -p .finalized_l1 && true
 	@L2_ROLLUP_PORT=$$(jq -r '.l2RollupPort' hostPort.json);\
 	L2_GETH_PORT=$$(jq -r '.l2GethPort' hostPort.json);\
 	L1_GETH_PORT=$$(jq -r '.l1GethPort' hostPort.json);\
@@ -47,19 +49,21 @@ server-up:
 		--l2=http://localhost:$$L2_GETH_PORT \
 		--l1=http://localhost:$$L1_GETH_PORT \
 		--beacon=http://localhost:$$L1_BEACON_PORT \
-		--l1-chain-config=$$L1_CHAIN_CONFIG
+		--l1-chain-config=$$L1_CHAIN_CONFIG \
+		--initial-claimed-l2=103 \
+		--ttl=1800 \
+		--max-preimage-distance=100 \
+		--purger-interval-seconds=100
 
 .PHONY: test
 test:
 	@L2_ROLLUP_PORT=$$(jq -r '.l2RollupPort' hostPort.json);\
 	L2_GETH_PORT=$$(jq -r '.l2GethPort' hostPort.json);\
-	L2_ROLLUP_PORT=$$L2_ROLLUP_PORT L2_GETH_PORT=$$L2_GETH_PORT cargo test --manifest-path=./server/Cargo.toml
+	L2_ROLLUP_ADDR=http://localhost:$$L2_ROLLUP_PORT L2_GETH_ADDR=http://localhost:$$L2_GETH_PORT cargo test --manifest-path=./server/Cargo.toml
 
-.PHONY: test-ignored
-test-ignored:
-	@L2_ROLLUP_PORT=$$(jq -r '.l2RollupPort' hostPort.json);\
-	L2_GETH_PORT=$$(jq -r '.l2GethPort' hostPort.json);\
-	REQUEST_PATH=$(CURDIR)/tool/body.json L2_ROLLUP_PORT=$$L2_ROLLUP_PORT L2_GETH_PORT=$$L2_GETH_PORT cargo test --manifest-path=./server/Cargo.toml -- --ignored
+.PHONY: inspect
+inspect:
+	cargo test --manifest-path=./server/Cargo.toml -- --ignored
 
 .PHONY: devnet-down
 devnet-down:
