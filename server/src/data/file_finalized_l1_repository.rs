@@ -63,7 +63,7 @@ impl FinalizedL1Repository for FileFinalizedL1Repository {
         let now = time::SystemTime::now();
         for entry in Self::entries(&self.dir).await? {
             let metadata = entry.metadata().await?;
-            let created = metadata.created()?;
+            let created = metadata.modified()?;
             let expired = created
                 .checked_add(self.ttl)
                 .ok_or_else(|| anyhow::anyhow!("expired finalized l1 cache is too new"))?;

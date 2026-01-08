@@ -133,7 +133,7 @@ impl PreimageRepository for FilePreimageRepository {
         let mut target = vec![];
         for entry in Self::entries(&self.dir).await? {
             let metadata = entry.metadata().await?;
-            let created = metadata.created()?;
+            let created = metadata.modified()?;
             let expired = created.checked_add(self.ttl).ok_or_else(|| {
                 anyhow::anyhow!("TTL duration overflow when calculating expiration time")
             })?;
