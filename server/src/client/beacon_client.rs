@@ -79,11 +79,18 @@ pub trait BeaconClient: Send + Sync + 'static {
 #[derive(Debug, Clone)]
 pub struct HttpBeaconClient {
     beacon_addr: String,
+    client: reqwest::Client,
 }
 
 impl HttpBeaconClient {
-    pub fn new(beacon_addr: String) -> Self {
-        Self { beacon_addr }
+    pub fn new(beacon_addr: String, timeout: std::time::Duration) -> Self {
+        Self {
+            beacon_addr,
+            client: reqwest::Client::builder()
+                .timeout(timeout)
+                .build()
+                .expect("failed to build reqwest client"),
+        }
     }
 
     async fn check_response(&self, response: Response) -> anyhow::Result<Response> {
@@ -102,8 +109,8 @@ impl HttpBeaconClient {
 #[async_trait]
 impl BeaconClient for HttpBeaconClient {
     async fn get_raw_light_client_finality_update(&self) -> anyhow::Result<String> {
-        let client = reqwest::Client::new();
-        let response = client
+        let response = self
+            .client
             .get(format!(
                 "{}/eth/v1/beacon/light_client/finality_update",
                 self.beacon_addr

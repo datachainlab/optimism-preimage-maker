@@ -96,6 +96,7 @@ pub struct Block {
 pub struct HttpL2Client {
     op_node_addr: String,
     op_geth_addr: String,
+    client: reqwest::Client,
 }
 
 #[async_trait]
@@ -112,15 +113,20 @@ impl Default for HttpL2Client {
         Self::new(
             "http://localhost:7545".into(),
             "http://localhost:9545".into(),
+            std::time::Duration::from_secs(30),
         )
     }
 }
 
 impl HttpL2Client {
-    pub fn new(op_node_addr: String, op_geth_addr: String) -> Self {
+    pub fn new(op_node_addr: String, op_geth_addr: String, timeout: std::time::Duration) -> Self {
         Self {
             op_node_addr,
             op_geth_addr,
+            client: reqwest::Client::builder()
+                .timeout(timeout)
+                .build()
+                .expect("failed to build reqwest client"),
         }
     }
 
@@ -140,12 +146,12 @@ impl HttpL2Client {
 #[async_trait]
 impl L2Client for HttpL2Client {
     async fn chain_id(&self) -> Result<u64> {
-        let client = reqwest::Client::new();
         let body = RpcRequest {
             method: "eth_chainId".into(),
             ..Default::default()
         };
-        let response = client
+        let response = self
+            .client
             .post(&self.op_geth_addr)
             .header("Content-Type", "application/json")
             .json(&body)
@@ -157,12 +163,12 @@ impl L2Client for HttpL2Client {
     }
 
     async fn rollup_config(&self) -> Result<RollupConfig> {
-        let client = reqwest::Client::new();
         let body = RpcRequest {
             method: "optimism_rollupConfig".into(),
             ..Default::default()
         };
-        let response = client
+        let response = self
+            .client
             .post(&self.op_node_addr)
             .header("Content-Type", "application/json")
             .json(&body)
@@ -173,12 +179,12 @@ impl L2Client for HttpL2Client {
         Ok(result.result)
     }
     async fn sync_status(&self) -> Result<SyncStatus> {
-        let client = reqwest::Client::new();
         let body = RpcRequest {
             method: "optimism_syncStatus".into(),
             ..Default::default()
         };
-        let response = client
+        let response = self
+            .client
             .post(&self.op_node_addr)
             .header("Content-Type", "application/json")
             .json(&body)
@@ -190,13 +196,13 @@ impl L2Client for HttpL2Client {
     }
 
     async fn output_root_at(&self, number: u64) -> Result<OutputRootAtBlock> {
-        let client = reqwest::Client::new();
         let body = RpcRequest {
             method: "optimism_outputAtBlock".into(),
             params: vec![format!("0x{number:X}").into()],
             ..Default::default()
         };
-        let response = client
+        let response = self
+            .client
             .post(&self.op_node_addr)
             .header("Content-Type", "application/json")
             .json(&body)
@@ -208,13 +214,13 @@ impl L2Client for HttpL2Client {
     }
 
     async fn get_block_by_number(&self, number: u64) -> Result<Block> {
-        let client = reqwest::Client::new();
         let body = RpcRequest {
             method: "eth_getBlockByNumber".into(),
             params: vec![format!("0x{number:X}").into(), false.into()],
             ..Default::default()
         };
-        let response = client
+        let response = self
+            .client
             .post(&self.op_geth_addr)
             .header("Content-Type", "application/json")
             .json(&body)

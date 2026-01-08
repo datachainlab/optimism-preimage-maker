@@ -42,11 +42,14 @@ async fn main() -> anyhow::Result<()> {
         .init();
     info!("start optimism-preimage-maker");
 
+    let http_client_timeout = Duration::from_secs(config.http_client_timeout_seconds);
     let l2_client = HttpL2Client::new(
         config.l2_rollup_address.to_string(),
         config.l2_node_address.to_string(),
+        http_client_timeout,
     );
-    let beacon_client = HttpBeaconClient::new(config.l1_beacon_address.to_string());
+    let beacon_client =
+        HttpBeaconClient::new(config.l1_beacon_address.to_string(), http_client_timeout);
     let chain_id = l2_client.chain_id().await?;
     let (rollup_config, l1_chain_config) = if ROLLUP_CONFIGS.get(&chain_id).is_none() {
         // devnet only

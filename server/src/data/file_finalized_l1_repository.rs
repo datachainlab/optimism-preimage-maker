@@ -184,7 +184,9 @@ mod tests {
             .expect("write tmp");
 
         // Verify entries() ignores the .tmp file
-        let entries = FileFinalizedL1Repository::entries(&dir).await.expect("entries");
+        let entries = FileFinalizedL1Repository::entries(&dir)
+            .await
+            .expect("entries");
         // Should only have the normal file, not the .tmp file
         assert_eq!(entries.len(), 1);
         assert!(!entries[0].file_name().to_string_lossy().ends_with(".tmp"));

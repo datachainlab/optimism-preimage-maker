@@ -65,4 +65,8 @@ pub struct Config {
     /// TTL in seconds. default 7 days
     #[clap(long, default_value = "604800")]
     pub ttl: u64,
+
+    /// HTTP client timeout in seconds.
+    #[clap(long, default_value = "30")]
+    pub http_client_timeout_seconds: u64,
 }
