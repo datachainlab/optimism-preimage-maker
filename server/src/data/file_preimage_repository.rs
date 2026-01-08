@@ -69,8 +69,10 @@ impl FilePreimageRepository {
         while let Some(entry) = entries.next_entry().await? {
             match entry.file_name().to_str() {
                 None => continue,
-                Some(_) => {
-                    file_list.push(entry);
+                Some(name) => {
+                    if !name.ends_with(".tmp") {
+                        file_list.push(entry);
+                    }
                 }
             }
         }
@@ -92,7 +94,10 @@ impl FilePreimageRepository {
 impl PreimageRepository for FilePreimageRepository {
     async fn upsert(&self, metadata: PreimageMetadata, preimage: Vec<u8>) -> anyhow::Result<()> {
         let path = self.path(&metadata);
-        fs::write(&path, preimage).await?;
+        let tmp_path = format!("{}.tmp", path);
+        fs::write(&tmp_path, preimage).await?;
+        fs::rename(&tmp_path, &path).await?;
+
         // NOTE: Process should be restarted when locking is failed to avoid dirty metadata.
         let mut lock = self.metadata_list.write().unwrap();
         lock.insert(metadata);
@@ -133,8 +138,8 @@ impl PreimageRepository for FilePreimageRepository {
         let mut target = vec![];
         for entry in Self::entries(&self.dir).await? {
             let metadata = entry.metadata().await?;
-            let created = metadata.modified()?;
-            let expired = created.checked_add(self.ttl).ok_or_else(|| {
+            let modified = metadata.modified()?;
+            let expired = modified.checked_add(self.ttl).ok_or_else(|| {
                 anyhow::anyhow!("TTL duration overflow when calculating expiration time")
             })?;
             if now >= expired {
@@ -351,6 +356,38 @@ mod tests {
         repo.upsert(m.clone(), b"v2".to_vec()).await.unwrap();
         let got2 = repo.get(&m).await.unwrap();
         assert_eq!(got2, b"v2".to_vec());
+
+        tokio::fs::remove_dir_all(dir).await.ok();
+    }
+    #[tokio::test]
+    async fn test_entries_ignores_tmp_files() {
+        let dir = unique_test_dir("tmp_ignore_preimage");
+        let repo = FilePreimageRepository::new(&dir, Duration::from_secs(1))
+            .await
+            .expect("new repo");
+
+        // Create a normal file via upsert
+        let h = B256::from([0xddu8; 32]);
+        let m = make_meta(1, 1, h);
+        repo.upsert(m.clone(), b"data".to_vec())
+            .await
+            .expect("upsert");
+
+        // Manually create a .tmp file
+        let path = repo.path(&m);
+        let tmp_path = format!("{}.tmp", path);
+        tokio::fs::write(&tmp_path, b"partial data")
+            .await
+            .expect("write tmp");
+
+        // Verify entries() ignores the .tmp file by reloading metadata
+        let repo2 = FilePreimageRepository::new(&dir, Duration::from_secs(1))
+            .await
+            .expect("new repo 2");
+        let list = repo2.list_metadata(None, None).await;
+        // Should contain m, but no error or extra entry for tmp
+        assert_eq!(list.len(), 1);
+        assert_eq!(list[0], m);
 
         tokio::fs::remove_dir_all(dir).await.ok();
     }

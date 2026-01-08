@@ -38,8 +38,10 @@ impl FileFinalizedL1Repository {
         while let Some(entry) = entries.next_entry().await? {
             match entry.file_name().to_str() {
                 None => continue,
-                Some(_) => {
-                    file_list.push(entry);
+                Some(name) => {
+                    if !name.ends_with(".tmp") {
+                        file_list.push(entry);
+                    }
                 }
             }
         }
@@ -50,7 +52,10 @@ impl FileFinalizedL1Repository {
 #[async_trait]
 impl FinalizedL1Repository for FileFinalizedL1Repository {
     async fn upsert(&self, l1_head_hash: &B256, raw_finalized_l1: String) -> anyhow::Result<()> {
-        fs::write(self.path(l1_head_hash), raw_finalized_l1).await?;
+        let path = self.path(l1_head_hash);
+        let tmp_path = format!("{}.tmp", path);
+        fs::write(&tmp_path, raw_finalized_l1).await?;
+        fs::rename(&tmp_path, &path).await?;
         Ok(())
     }
 
@@ -63,8 +68,8 @@ impl FinalizedL1Repository for FileFinalizedL1Repository {
         let now = time::SystemTime::now();
         for entry in Self::entries(&self.dir).await? {
             let metadata = entry.metadata().await?;
-            let created = metadata.modified()?;
-            let expired = created
+            let modified = metadata.modified()?;
+            let expired = modified
                 .checked_add(self.ttl)
                 .ok_or_else(|| anyhow::anyhow!("expired finalized l1 cache is too new"))?;
             if now >= expired {
@@ -159,6 +164,30 @@ mod tests {
 
         assert!(repo.get(&h1).await.is_err(), "h1 should be purged");
         assert!(repo.get(&h2).await.is_ok(), "h2 should be kept");
+
+        tokio::fs::remove_dir_all(dir).await.ok();
+    }
+    #[tokio::test]
+    async fn test_entries_ignores_tmp_files() {
+        let dir = unique_test_dir("tmp_ignore");
+        let repo = FileFinalizedL1Repository::new(&dir, Duration::from_secs(1)).expect("new repo");
+
+        // Create a normal file via upsert
+        let h1 = B256::from([0xccu8; 32]);
+        repo.upsert(&h1, "data".to_string()).await.expect("upsert");
+
+        // Manually create a .tmp file
+        let path = repo.path(&h1);
+        let tmp_path = format!("{}.tmp", path);
+        tokio::fs::write(&tmp_path, "partial data")
+            .await
+            .expect("write tmp");
+
+        // Verify entries() ignores the .tmp file
+        let entries = FileFinalizedL1Repository::entries(&dir).await.expect("entries");
+        // Should only have the normal file, not the .tmp file
+        assert_eq!(entries.len(), 1);
+        assert!(!entries[0].file_name().to_string_lossy().ends_with(".tmp"));
 
         tokio::fs::remove_dir_all(dir).await.ok();
     }
