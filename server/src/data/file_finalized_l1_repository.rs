@@ -53,7 +53,7 @@ impl FileFinalizedL1Repository {
 impl FinalizedL1Repository for FileFinalizedL1Repository {
     async fn upsert(&self, l1_head_hash: &B256, raw_finalized_l1: String) -> anyhow::Result<()> {
         let path = self.path(l1_head_hash);
-        let tmp_path = format!("{}.tmp", path);
+        let tmp_path = format!("{path}.tmp");
         fs::write(&tmp_path, raw_finalized_l1).await?;
         fs::rename(&tmp_path, &path).await?;
         Ok(())
@@ -178,7 +178,7 @@ mod tests {
 
         // Manually create a .tmp file
         let path = repo.path(&h1);
-        let tmp_path = format!("{}.tmp", path);
+        let tmp_path = format!("{path}.tmp");
         tokio::fs::write(&tmp_path, "partial data")
             .await
             .expect("write tmp");

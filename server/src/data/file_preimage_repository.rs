@@ -94,7 +94,7 @@ impl FilePreimageRepository {
 impl PreimageRepository for FilePreimageRepository {
     async fn upsert(&self, metadata: PreimageMetadata, preimage: Vec<u8>) -> anyhow::Result<()> {
         let path = self.path(&metadata);
-        let tmp_path = format!("{}.tmp", path);
+        let tmp_path = format!("{path}.tmp");
         fs::write(&tmp_path, preimage).await?;
         fs::rename(&tmp_path, &path).await?;
 
@@ -375,7 +375,7 @@ mod tests {
 
         // Manually create a .tmp file
         let path = repo.path(&m);
-        let tmp_path = format!("{}.tmp", path);
+        let tmp_path = format!("{path}.tmp");
         tokio::fs::write(&tmp_path, b"partial data")
             .await
             .expect("write tmp");
