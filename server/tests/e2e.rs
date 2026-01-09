@@ -31,7 +31,11 @@ pub fn get_l2_client() -> HttpL2Client {
         op_node_addr,
         op_geth_addr
     );
-    HttpL2Client::new(op_node_addr, op_geth_addr, std::time::Duration::from_secs(30))
+    HttpL2Client::new(
+        op_node_addr,
+        op_geth_addr,
+        std::time::Duration::from_secs(30),
+    )
 }
 
 pub async fn derivation_in_light_client(
