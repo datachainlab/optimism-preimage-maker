@@ -183,7 +183,7 @@ where
     /// - If a valid and up-to-date finalized block is found, it returns the L1 block's hash and raw response.
     ///
     async fn get_l1_head_hash(&self, sync_status: &SyncStatus) -> Option<(B256, String)> {
-        let mut retry_count = 0;
+        let mut attempts_count = 0;
         let (finality_l1, raw_finality_l1) = loop {
             let raw_finality_l1 = match self
                 .beacon_client
@@ -206,18 +206,22 @@ where
                 };
             let block_number = finality_l1.data.finalized_header.execution.block_number;
             if block_number < sync_status.finalized_l1.number {
-                if retry_count > 30 {
+                if attempts_count > 30 {
                     error!(
-                        "finality_l1 = {:?} delayed. retry_count = {}",
-                        block_number, retry_count
+                        "finality_l1 = {:?} delayed. attempts_count = {}",
+                        block_number, attempts_count
                     );
+                    // It is intentional that the process doesn't exit with an error even after exceeding attempts_count,
+                    // as we would have no choice but to continue the loop anyway.
+                    // The purpose of attempts_count is to trigger error-level logs for monitoring and detection,
+                    // rather than to terminate the process.
                 } else {
                     warn!(
-                        "finality_l1 = {:?} delayed. retry_count = {}",
-                        block_number, retry_count
+                        "finality_l1 = {:?} delayed. attempts_count = {}",
+                        block_number, attempts_count
                     );
                 }
-                retry_count += 1;
+                attempts_count += 1;
                 time::sleep(time::Duration::from_secs(10)).await;
                 continue;
             }
