@@ -1,0 +1,394 @@
+use crate::data::preimage_repository::{PreimageMetadata, PreimageRepository};
+use axum::async_trait;
+use std::collections::HashSet;
+use std::sync::{Arc, RwLock};
+use std::time;
+use tokio::fs;
+use tokio::fs::DirEntry;
+use tracing::{error, info};
+
+#[derive(Clone)]
+pub struct FilePreimageRepository {
+    dir: String,
+    metadata_list: Arc<RwLock<HashSet<PreimageMetadata>>>,
+    ttl: time::Duration,
+}
+
+impl FilePreimageRepository {
+    pub async fn new(parent_dir: &str, ttl: time::Duration) -> anyhow::Result<Self> {
+        let path = std::path::Path::new(parent_dir);
+        if !path.exists() {
+            return Err(anyhow::anyhow!("directory does not exist: {parent_dir}"));
+        }
+        if !path.is_dir() {
+            return Err(anyhow::anyhow!("path is not a directory: {parent_dir}"));
+        }
+        let metadata_list = Self::load_metadata(parent_dir).await?;
+        info!("loaded metadata: {:?}", metadata_list.len());
+        Ok(Self {
+            dir: parent_dir.to_string(),
+            metadata_list: Arc::new(RwLock::new(metadata_list)),
+            ttl,
+        })
+    }
+
+    async fn load_metadata(dir: &str) -> anyhow::Result<HashSet<PreimageMetadata>> {
+        let mut metadata_list = HashSet::new();
+
+        let entries = Self::entries(dir).await?;
+        for entry in entries {
+            let name_osstr = entry.file_name();
+            let name = match name_osstr.to_str() {
+                Some(s) => s.to_string(),
+                None => {
+                    error!(
+                        "skipping file with invalid UTF-8 filename: {:?}",
+                        name_osstr
+                    );
+                    continue;
+                }
+            };
+            let metadata = PreimageMetadata::try_from(name.as_str());
+            match metadata {
+                Err(e) => {
+                    error!("failed to parse metadata: {:?}, error={}", name, e);
+                }
+                Ok(metadata) => {
+                    metadata_list.insert(metadata);
+                }
+            }
+        }
+        Ok(metadata_list)
+    }
+
+    async fn entries(dir: &str) -> anyhow::Result<Vec<DirEntry>> {
+        let mut file_list = vec![];
+        let mut entries = fs::read_dir(dir)
+            .await
+            .map_err(|e| anyhow::anyhow!("failed to read dir: {dir:?}, error={e}"))?;
+        while let Some(entry) = entries.next_entry().await? {
+            match entry.file_name().to_str() {
+                None => continue,
+                Some(name) => {
+                    if !name.ends_with(".tmp") {
+                        file_list.push(entry);
+                    }
+                }
+            }
+        }
+        Ok(file_list)
+    }
+
+    fn path(&self, metadata: &PreimageMetadata) -> String {
+        format!(
+            "{}/{}_{}_{}",
+            self.dir, metadata.agreed, metadata.claimed, metadata.l1_head
+        )
+    }
+    fn sort(metadata_list: &mut [PreimageMetadata]) {
+        metadata_list.sort_by(|a, b| a.claimed.cmp(&b.claimed));
+    }
+}
+
+#[async_trait]
+impl PreimageRepository for FilePreimageRepository {
+    async fn upsert(&self, metadata: PreimageMetadata, preimage: Vec<u8>) -> anyhow::Result<()> {
+        let path = self.path(&metadata);
+        let tmp_path = format!("{path}.tmp");
+        fs::write(&tmp_path, preimage).await?;
+        fs::rename(&tmp_path, &path).await?;
+
+        // NOTE: Process should be restarted when locking is failed to avoid dirty metadata.
+        let mut lock = self.metadata_list.write().unwrap();
+        lock.insert(metadata);
+        Ok(())
+    }
+    async fn get(&self, metadata: &PreimageMetadata) -> anyhow::Result<Vec<u8>> {
+        let path = self.path(metadata);
+        let preimage = fs::read(&path).await?;
+        Ok(preimage)
+    }
+    async fn list_metadata(
+        &self,
+        lt_claimed: Option<u64>,
+        gt_claimed: Option<u64>,
+    ) -> Vec<PreimageMetadata> {
+        let mut raw = {
+            let lock = self.metadata_list.read().unwrap();
+            lock.iter().cloned().collect::<Vec<_>>()
+        };
+        Self::sort(&mut raw);
+        let raw = match gt_claimed {
+            None => raw,
+            Some(gt_claimed) => raw.into_iter().filter(|m| m.claimed > gt_claimed).collect(),
+        };
+        match lt_claimed {
+            None => raw,
+            Some(lt_claimed) => raw.into_iter().filter(|m| m.claimed < lt_claimed).collect(),
+        }
+    }
+
+    async fn latest_metadata(&self) -> Option<PreimageMetadata> {
+        let mut result = self.list_metadata(None, None).await;
+        result.pop()
+    }
+
+    async fn purge_expired(&self) -> anyhow::Result<()> {
+        let now = time::SystemTime::now();
+        let mut target = vec![];
+        for entry in Self::entries(&self.dir).await? {
+            let metadata = entry.metadata().await?;
+            let modified = metadata.modified()?;
+            let expired = modified.checked_add(self.ttl).ok_or_else(|| {
+                anyhow::anyhow!("TTL duration overflow when calculating expiration time")
+            })?;
+            if now >= expired {
+                target.push(entry);
+            }
+        }
+        info!("purging expired preimage metadata: {:?}", target.len());
+
+        // delete files from disk
+        let mut target_cached = vec![];
+        for entry in target {
+            let name_osstr = entry.file_name();
+            let name = match name_osstr.to_str() {
+                Some(s) => s.to_string(),
+                None => {
+                    error!("Skipping file with non-UTF-8 filename: {:?}", name_osstr);
+                    continue;
+                }
+            };
+            fs::remove_file(entry.path()).await?;
+            if let Ok(v) = PreimageMetadata::try_from(name.as_str()) {
+                target_cached.push(v);
+            }
+        }
+
+        // Remove from cache
+        {
+            let mut lock = self.metadata_list.write().unwrap();
+            for v in target_cached {
+                lock.remove(&v);
+            }
+        }
+
+        Ok(())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::FilePreimageRepository;
+    use crate::data::preimage_repository::{PreimageMetadata, PreimageRepository};
+    use alloy_primitives::B256;
+    use std::path::PathBuf;
+    use std::time::Duration;
+
+    fn unique_test_dir(suffix: &str) -> String {
+        let mut dir = std::env::temp_dir();
+        let ts = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_nanos();
+        let pid = std::process::id();
+        dir.push(format!("optimism_preimage_maker_test_{pid}_{ts}_{suffix}"));
+        std::fs::create_dir_all(&dir).expect("create temp dir");
+        dir.to_string_lossy().to_string()
+    }
+
+    fn make_meta(agreed: u64, claimed: u64, head: B256) -> PreimageMetadata {
+        PreimageMetadata {
+            agreed,
+            claimed,
+            l1_head: head,
+        }
+    }
+
+    #[tokio::test]
+    async fn test_new_empty_dir() {
+        let dir = unique_test_dir("empty");
+        let repo = FilePreimageRepository::new(&dir, Duration::from_secs(1))
+            .await
+            .expect("repo new");
+        let list = repo.list_metadata(None, None).await;
+        assert!(list.is_empty());
+        let latest = repo.latest_metadata().await;
+        assert!(latest.is_none());
+        tokio::fs::remove_dir_all(dir).await.ok();
+    }
+
+    #[tokio::test]
+    async fn test_new_with_non_existent_dir() {
+        let res =
+            FilePreimageRepository::new("/path/to/non/existent/dir", Duration::from_secs(1)).await;
+        assert!(res.is_err());
+        assert_eq!(
+            res.err().unwrap().to_string(),
+            "directory does not exist: /path/to/non/existent/dir"
+        );
+    }
+
+    #[tokio::test]
+    async fn test_upsert_and_get_and_latest() {
+        let dir = unique_test_dir("upsert");
+        let repo = FilePreimageRepository::new(&dir, Duration::from_secs(1))
+            .await
+            .expect("repo new");
+
+        let h = B256::from([1u8; 32]);
+        let m1 = make_meta(1, 2, h);
+        let m2 = make_meta(2, 3, h);
+
+        let p1 = b"hello".to_vec();
+        let p2 = b"world".to_vec();
+
+        repo.upsert(m1.clone(), p1.clone())
+            .await
+            .expect("upsert m1");
+        repo.upsert(m2.clone(), p2.clone())
+            .await
+            .expect("upsert m2");
+
+        let got1 = repo.get(&m1).await.expect("get m1");
+        assert_eq!(got1, p1);
+        let got2 = repo.get(&m2).await.expect("get m2");
+        assert_eq!(got2, p2);
+
+        // list should be sorted by agreed ascending
+        let list = repo.list_metadata(None, None).await;
+        assert_eq!(list, vec![m1.clone(), m2.clone()]);
+
+        // latest should be the last after sorting (m2)
+        let latest = repo.latest_metadata().await;
+        assert_eq!(latest, Some(m2.clone()));
+
+        tokio::fs::remove_dir_all(dir).await.ok();
+    }
+
+    #[tokio::test]
+    async fn test_list_metadata_filter_and_sort() {
+        let dir = unique_test_dir("filter");
+        let repo = FilePreimageRepository::new(&dir, Duration::from_secs(1))
+            .await
+            .expect("repo new");
+        let h = B256::from([2u8; 32]);
+        let m_a = make_meta(5, 6, h);
+        let m_b = make_meta(1, 2, h);
+        let m_c = make_meta(3, 4, h);
+
+        repo.upsert(m_a.clone(), vec![10]).await.unwrap();
+        repo.upsert(m_b.clone(), vec![20]).await.unwrap();
+        repo.upsert(m_c.clone(), vec![30]).await.unwrap();
+
+        let all = repo.list_metadata(None, None).await;
+        assert_eq!(all, vec![m_b.clone(), m_c.clone(), m_a.clone()]);
+
+        // filter by claimed > x
+        let filtered = repo.list_metadata(None, Some(2)).await; // claimed > 2 => m_c(4), m_a(6)
+        assert_eq!(filtered, vec![m_c.clone(), m_a.clone()]);
+
+        // filter by claimed < x
+        let filtered = repo.list_metadata(Some(4), None).await; // claimed < 2 => m_c(2)
+        assert_eq!(filtered, vec![m_b.clone()]);
+
+        // filter by gt < claimed < lt
+        let filtered = repo.list_metadata(Some(7), Some(4)).await; // 4 < claimed < 7 => m_c(6)
+        assert_eq!(filtered, vec![m_a.clone()]);
+
+        tokio::fs::remove_dir_all(dir).await.ok();
+    }
+
+    #[tokio::test]
+    async fn test_load_existing_files() {
+        let dir = unique_test_dir("load");
+
+        // Pre-create files with valid names and contents
+        let h1 = B256::from([3u8; 32]);
+        let h2 = B256::from([4u8; 32]);
+        let m1 = make_meta(10, 11, h1);
+        let m2 = make_meta(12, 13, h2);
+
+        let f1 = format!("{}_{}_{}", m1.agreed, m1.claimed, m1.l1_head);
+        let f2 = format!("{}_{}_{}", m2.agreed, m2.claimed, m2.l1_head);
+        let mut p1 = PathBuf::from(&dir);
+        p1.push(&f1);
+        let mut p2 = PathBuf::from(&dir);
+        p2.push(&f2);
+
+        tokio::fs::write(&p1, b"alpha").await.unwrap();
+        tokio::fs::write(&p2, b"beta").await.unwrap();
+        // invalid file should be ignored
+        let mut junk = PathBuf::from(&dir);
+        junk.push("invalid_name.txt");
+        tokio::fs::write(&junk, b"junk").await.unwrap();
+
+        let repo = FilePreimageRepository::new(&dir, Duration::from_secs(1))
+            .await
+            .expect("repo new");
+
+        let list = repo.list_metadata(None, None).await;
+        // Should be sorted by agreed
+        assert_eq!(list, vec![m1.clone(), m2.clone()]);
+
+        let g1 = repo.get(&m1).await.unwrap();
+        assert_eq!(g1, b"alpha");
+        let g2 = repo.get(&m2).await.unwrap();
+        assert_eq!(g2, b"beta");
+
+        tokio::fs::remove_dir_all(dir).await.ok();
+    }
+
+    #[tokio::test]
+    async fn test_overwrite_same_metadata_replaces_file() {
+        let dir = unique_test_dir("overwrite");
+        let repo = FilePreimageRepository::new(&dir, Duration::from_secs(1))
+            .await
+            .expect("repo new");
+        let h = B256::from([5u8; 32]);
+        let m = make_meta(7, 8, h);
+
+        repo.upsert(m.clone(), b"v1".to_vec()).await.unwrap();
+        let got = repo.get(&m).await.unwrap();
+        assert_eq!(got, b"v1".to_vec());
+
+        // overwrite
+        repo.upsert(m.clone(), b"v2".to_vec()).await.unwrap();
+        let got2 = repo.get(&m).await.unwrap();
+        assert_eq!(got2, b"v2".to_vec());
+
+        tokio::fs::remove_dir_all(dir).await.ok();
+    }
+    #[tokio::test]
+    async fn test_entries_ignores_tmp_files() {
+        let dir = unique_test_dir("tmp_ignore_preimage");
+        let repo = FilePreimageRepository::new(&dir, Duration::from_secs(1))
+            .await
+            .expect("new repo");
+
+        // Create a normal file via upsert
+        let h = B256::from([0xddu8; 32]);
+        let m = make_meta(1, 1, h);
+        repo.upsert(m.clone(), b"data".to_vec())
+            .await
+            .expect("upsert");
+
+        // Manually create a .tmp file
+        let path = repo.path(&m);
+        let tmp_path = format!("{path}.tmp");
+        tokio::fs::write(&tmp_path, b"partial data")
+            .await
+            .expect("write tmp");
+
+        // Verify entries() ignores the .tmp file by reloading metadata
+        let repo2 = FilePreimageRepository::new(&dir, Duration::from_secs(1))
+            .await
+            .expect("new repo 2");
+        let list = repo2.list_metadata(None, None).await;
+        // Should contain m, but no error or extra entry for tmp
+        assert_eq!(list.len(), 1);
+        assert_eq!(list[0], m);
+
+        tokio::fs::remove_dir_all(dir).await.ok();
+    }
+}

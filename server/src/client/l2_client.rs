@@ -1,5 +1,6 @@
 use alloy_primitives::B256;
 use anyhow::Result;
+use axum::async_trait;
 use kona_genesis::RollupConfig;
 use reqwest::Response;
 use serde_json::Value;
@@ -12,11 +13,11 @@ pub struct RpcResult<T> {
 }
 
 #[derive(Debug, Clone, serde::Serialize)]
-struct RpcRequest {
-    jsonrpc: String,
-    method: String,
-    params: Vec<Value>,
-    id: i64,
+pub struct RpcRequest {
+    pub jsonrpc: String,
+    pub method: String,
+    pub params: Vec<Value>,
+    pub id: i64,
 }
 
 impl Default for RpcRequest {
@@ -91,112 +92,42 @@ pub struct Block {
     pub hash: B256,
 }
 
-pub struct L2Client {
+#[derive(Debug, Clone)]
+pub struct HttpL2Client {
     op_node_addr: String,
     op_geth_addr: String,
+    client: reqwest::Client,
 }
 
-impl Default for L2Client {
+#[async_trait]
+pub trait L2Client: Send + Sync + 'static {
+    async fn chain_id(&self) -> Result<u64>;
+    async fn rollup_config(&self) -> Result<RollupConfig>;
+    async fn sync_status(&self) -> Result<SyncStatus>;
+    async fn output_root_at(&self, number: u64) -> Result<OutputRootAtBlock>;
+    async fn get_block_by_number(&self, number: u64) -> Result<Block>;
+}
+
+impl Default for HttpL2Client {
     fn default() -> Self {
         Self::new(
             "http://localhost:7545".into(),
             "http://localhost:9545".into(),
+            std::time::Duration::from_secs(30),
         )
     }
 }
 
-impl L2Client {
-    pub fn new(op_node_addr: String, op_geth_addr: String) -> Self {
+impl HttpL2Client {
+    pub fn new(op_node_addr: String, op_geth_addr: String, timeout: std::time::Duration) -> Self {
         Self {
             op_node_addr,
             op_geth_addr,
+            client: reqwest::Client::builder()
+                .timeout(timeout)
+                .build()
+                .expect("failed to build reqwest client"),
         }
-    }
-
-    pub async fn chain_id(&self) -> Result<u64> {
-        let client = reqwest::Client::new();
-        let body = RpcRequest {
-            method: "eth_chainId".into(),
-            ..Default::default()
-        };
-        let response = client
-            .post(&self.op_geth_addr)
-            .header("Content-Type", "application/json")
-            .json(&body)
-            .send()
-            .await?;
-        let response = self.check_response(response).await?;
-        let result: RpcResult<String> = response.json().await?;
-        Ok(u64::from_str_radix(&result.result[2..], 16)?)
-    }
-
-    pub async fn rollup_config(&self) -> Result<RollupConfig> {
-        let client = reqwest::Client::new();
-        let body = RpcRequest {
-            method: "optimism_rollupConfig".into(),
-            ..Default::default()
-        };
-        let response = client
-            .post(&self.op_node_addr)
-            .header("Content-Type", "application/json")
-            .json(&body)
-            .send()
-            .await?;
-        let response = self.check_response(response).await?;
-        let result: RpcResult<RollupConfig> = response.json().await?;
-        Ok(result.result)
-    }
-    pub async fn sync_status(&self) -> Result<SyncStatus> {
-        let client = reqwest::Client::new();
-        let body = RpcRequest {
-            method: "optimism_syncStatus".into(),
-            ..Default::default()
-        };
-        let response = client
-            .post(&self.op_node_addr)
-            .header("Content-Type", "application/json")
-            .json(&body)
-            .send()
-            .await?;
-        let response = self.check_response(response).await?;
-        let result: RpcResult<SyncStatus> = response.json().await?;
-        Ok(result.result)
-    }
-
-    pub async fn output_root_at(&self, number: u64) -> Result<OutputRootAtBlock> {
-        let client = reqwest::Client::new();
-        let body = RpcRequest {
-            method: "optimism_outputAtBlock".into(),
-            params: vec![format!("0x{number:X}").into()],
-            ..Default::default()
-        };
-        let response = client
-            .post(&self.op_node_addr)
-            .header("Content-Type", "application/json")
-            .json(&body)
-            .send()
-            .await?;
-        let response = self.check_response(response).await?;
-        let result: RpcResult<OutputRootAtBlock> = response.json().await?;
-        Ok(result.result)
-    }
-
-    pub async fn get_block_by_number(&self, number: u64) -> Result<Block> {
-        let client = reqwest::Client::new();
-        let body = RpcRequest {
-            method: "eth_getBlockByNumber".into(),
-            params: vec![format!("0x{number:X}").into(), false.into()],
-            ..Default::default()
-        };
-        let response = client
-            .post(&self.op_geth_addr)
-            .header("Content-Type", "application/json")
-            .json(&body)
-            .send()
-            .await?;
-        let response = self.check_response(response).await?;
-        let result: RpcResult<Block> = response.json().await?;
-        Ok(result.result)
     }
 
     async fn check_response(&self, response: Response) -> Result<Response> {
@@ -209,5 +140,94 @@ impl L2Client {
                 response.text().await
             ))
         }
+    }
+}
+
+#[async_trait]
+impl L2Client for HttpL2Client {
+    async fn chain_id(&self) -> Result<u64> {
+        let body = RpcRequest {
+            method: "eth_chainId".into(),
+            ..Default::default()
+        };
+        let response = self
+            .client
+            .post(&self.op_geth_addr)
+            .header("Content-Type", "application/json")
+            .json(&body)
+            .send()
+            .await?;
+        let response = self.check_response(response).await?;
+        let result: RpcResult<String> = response.json().await?;
+        Ok(u64::from_str_radix(&result.result[2..], 16)?)
+    }
+
+    async fn rollup_config(&self) -> Result<RollupConfig> {
+        let body = RpcRequest {
+            method: "optimism_rollupConfig".into(),
+            ..Default::default()
+        };
+        let response = self
+            .client
+            .post(&self.op_node_addr)
+            .header("Content-Type", "application/json")
+            .json(&body)
+            .send()
+            .await?;
+        let response = self.check_response(response).await?;
+        let result: RpcResult<RollupConfig> = response.json().await?;
+        Ok(result.result)
+    }
+    async fn sync_status(&self) -> Result<SyncStatus> {
+        let body = RpcRequest {
+            method: "optimism_syncStatus".into(),
+            ..Default::default()
+        };
+        let response = self
+            .client
+            .post(&self.op_node_addr)
+            .header("Content-Type", "application/json")
+            .json(&body)
+            .send()
+            .await?;
+        let response = self.check_response(response).await?;
+        let result: RpcResult<SyncStatus> = response.json().await?;
+        Ok(result.result)
+    }
+
+    async fn output_root_at(&self, number: u64) -> Result<OutputRootAtBlock> {
+        let body = RpcRequest {
+            method: "optimism_outputAtBlock".into(),
+            params: vec![format!("0x{number:X}").into()],
+            ..Default::default()
+        };
+        let response = self
+            .client
+            .post(&self.op_node_addr)
+            .header("Content-Type", "application/json")
+            .json(&body)
+            .send()
+            .await?;
+        let response = self.check_response(response).await?;
+        let result: RpcResult<OutputRootAtBlock> = response.json().await?;
+        Ok(result.result)
+    }
+
+    async fn get_block_by_number(&self, number: u64) -> Result<Block> {
+        let body = RpcRequest {
+            method: "eth_getBlockByNumber".into(),
+            params: vec![format!("0x{number:X}").into(), false.into()],
+            ..Default::default()
+        };
+        let response = self
+            .client
+            .post(&self.op_geth_addr)
+            .header("Content-Type", "application/json")
+            .json(&body)
+            .send()
+            .await?;
+        let response = self.check_response(response).await?;
+        let result: RpcResult<Block> = response.json().await?;
+        Ok(result.result)
     }
 }

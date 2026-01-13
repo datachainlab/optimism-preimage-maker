@@ -1,18 +1,33 @@
-use crate::host::single::config::Config;
-use crate::server::{start_http_server_task, DerivationState};
+#![allow(dead_code)]
+use crate::client::beacon_client::HttpBeaconClient;
+use crate::client::l2_client::HttpL2Client;
+use crate::client::l2_client::L2Client;
+use crate::collector::{PreimageCollector, RealDerivationDriver};
+use crate::data::file_finalized_l1_repository::FileFinalizedL1Repository;
+use crate::data::file_preimage_repository::FilePreimageRepository;
+use crate::derivation::host::single::config::Config;
+use crate::derivation::host::single::handler::DerivationConfig;
+use crate::purger::PreimagePurger;
+use crate::web::start_http_server_task;
+use crate::web::SharedState;
 use anyhow::Context;
 use base64::Engine;
 use clap::Parser;
 use kona_registry::ROLLUP_CONFIGS;
-use l2_client::L2Client;
+use std::sync::Arc;
+use std::time::Duration;
+use tokio::select;
 use tracing::info;
 use tracing_subscriber::filter;
 use tracing_subscriber::layer::SubscriberExt;
 use tracing_subscriber::util::SubscriberInitExt;
 
-mod host;
-pub mod l2_client;
-mod server;
+mod client;
+mod collector;
+mod data;
+mod derivation;
+mod purger;
+mod web;
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
@@ -25,12 +40,16 @@ async fn main() -> anyhow::Result<()> {
         .with(tracing_subscriber::fmt::layer())
         .with(filter)
         .init();
-    info!("start optimism preimage-maker");
+    info!("start optimism-preimage-maker");
 
-    let l2_client = L2Client::new(
+    let http_client_timeout = Duration::from_secs(config.http_client_timeout_seconds);
+    let l2_client = HttpL2Client::new(
         config.l2_rollup_address.to_string(),
         config.l2_node_address.to_string(),
+        http_client_timeout,
     );
+    let beacon_client =
+        HttpBeaconClient::new(config.l1_beacon_address.to_string(), http_client_timeout);
     let chain_id = l2_client.chain_id().await?;
     let (rollup_config, l1_chain_config) = if ROLLUP_CONFIGS.get(&chain_id).is_none() {
         // devnet only
@@ -50,19 +69,68 @@ async fn main() -> anyhow::Result<()> {
         (None, None)
     };
 
+    let derivation_config = DerivationConfig {
+        rollup_config,
+        l1_chain_config,
+        config: config.clone(),
+        l2_chain_id: chain_id,
+    };
+
+    // Start preimage collector
+    info!("purging ttl = {} sec", config.ttl);
+    let ttl = Duration::from_secs(config.ttl);
+    let preimage_repository =
+        Arc::new(FilePreimageRepository::new(&config.preimage_dir, ttl).await?);
+    let finalized_l1_repository = Arc::new(FileFinalizedL1Repository::new(
+        &config.finalized_l1_dir,
+        ttl,
+    )?);
+    let collector = PreimageCollector {
+        client: Arc::new(l2_client),
+        beacon_client: Arc::new(beacon_client),
+        derivation_driver: Arc::new(RealDerivationDriver),
+        config: Arc::new(derivation_config),
+        max_distance: config.max_preimage_distance,
+        initial_claimed: config.initial_claimed_l2,
+        interval_seconds: config.collector_interval_seconds,
+        preimage_repository: preimage_repository.clone(),
+        finalized_l1_repository: finalized_l1_repository.clone(),
+        max_concurrency: config.max_collect_concurrency as usize,
+    };
+    let collector_task = tokio::spawn(async move {
+        collector.start().await;
+    });
+
+    let purger = PreimagePurger {
+        preimage_repository: preimage_repository.clone(),
+        finalized_l1_repository: finalized_l1_repository.clone(),
+        interval_seconds: config.purger_interval_seconds,
+    };
+    let purger_task = tokio::spawn(async move {
+        purger.start().await;
+    });
+
     // Start HTTP server
     let http_server_task = start_http_server_task(
         config.http_server_addr.as_str(),
-        DerivationState {
-            rollup_config,
-            l1_chain_config,
-            config: config.clone(),
-            l2_chain_id: chain_id,
+        SharedState {
+            preimage_repository,
+            finalized_l1_repository,
         },
     );
 
-    let result = http_server_task.await;
-    info!("server result : {:?}", result);
-
+    // Wait for signal
+    select! {
+        result = http_server_task => {
+            info!("stop http server: {:?}", result);
+        }
+        result = collector_task => {
+            info!("stop collector : {:?}", result);
+        }
+        result = purger_task => {
+            info!("stop purger : {:?}", result);
+        }
+    }
+    info!("shutdown complete");
     Ok(())
 }

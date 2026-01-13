@@ -34,4 +34,39 @@ pub struct Config {
     /// Optional L1 chain config base64 json string. (this is only required for devnet)
     #[clap(long)]
     pub l1_chain_config: Option<String>,
+
+    /// preimage directory if specified. (ex. .preimage)
+    #[clap(long, default_value = ".preimage")]
+    pub preimage_dir: String,
+
+    /// finalized l1 directory if specified. (ex. .finalized_l1)
+    #[clap(long, default_value = ".finalized_l1")]
+    pub finalized_l1_dir: String,
+
+    /// Max preimage distance ( from agreed to claimed) per one call
+    #[clap(long, default_value = "100")]
+    pub max_preimage_distance: u64,
+
+    /// Max concurrency of preimage collector.
+    #[clap(long, default_value = "10")]
+    pub max_collect_concurrency: u64,
+
+    /// Initial claimed l2 block number that is used when no preimage is created.
+    #[clap(long)]
+    pub initial_claimed_l2: u64,
+
+    /// Interval seconds between preimage collection.
+    #[clap(long, default_value = "60")]
+    pub collector_interval_seconds: u64,
+
+    #[clap(long, default_value = "86400")]
+    pub purger_interval_seconds: u64,
+
+    /// TTL in seconds. default 7 days
+    #[clap(long, default_value = "604800")]
+    pub ttl: u64,
+
+    /// HTTP client timeout in seconds.
+    #[clap(long, default_value = "30")]
+    pub http_client_timeout_seconds: u64,
 }

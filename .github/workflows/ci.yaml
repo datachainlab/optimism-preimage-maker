@@ -21,7 +21,7 @@ jobs:
       - name: Install components
         run: |
           rustup component add rustfmt clippy
-          cargo install cargo-machete --version 0.8.0
+          cargo install cargo-machete --version 0.8.0 --locked
       - name: Check format
         run: cargo fmt --all -- --check
       - name: Check clippy
@@ -51,7 +51,7 @@ jobs:
       - name: Install Foundry
         uses: foundry-rs/foundry-toolchain@v1
         with:
-            version: 'v1.0.0'
+          version: 'v1.0.0'
       - name: Install kurtosis
         run: |
           sudo apt-get install jq

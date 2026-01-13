@@ -1,7 +1,7 @@
 //! Contains a concrete implementation of the [KeyValueStore] trait that stores data on disk,
 //! using the [SingleChainHostCli] config.
 
-use crate::host::single::handler::DerivationRequest;
+use crate::derivation::host::single::handler::Derivation;
 use alloy_primitives::B256;
 use anyhow::Result;
 use kona_host::KeyValueStore;
@@ -14,12 +14,12 @@ use kona_proof::boot::{
 /// A simple, synchronous key-value store that returns data from a [SingleChainHostCli] config.
 #[derive(Debug)]
 pub struct LocalKeyValueStore {
-    cfg: DerivationRequest,
+    cfg: Derivation,
 }
 
 impl LocalKeyValueStore {
     /// Create a new [LocalKeyValueStore] with the given [SingleChainHostCli] config.
-    pub const fn new(cfg: DerivationRequest) -> Self {
+    pub const fn new(cfg: Derivation) -> Self {
         Self { cfg }
     }
 }
@@ -28,19 +28,21 @@ impl KeyValueStore for LocalKeyValueStore {
     fn get(&self, key: B256) -> Option<Vec<u8>> {
         let preimage_key = PreimageKey::try_from(*key).ok()?;
         match preimage_key.key_value() {
-            L1_HEAD_KEY => Some(self.cfg.l1_head_hash.to_vec()),
-            L2_OUTPUT_ROOT_KEY => Some(self.cfg.agreed_l2_output_root.to_vec()),
-            L2_CLAIM_KEY => Some(self.cfg.l2_output_root.to_vec()),
-            L2_CLAIM_BLOCK_NUMBER_KEY => Some(self.cfg.l2_block_number.to_be_bytes().to_vec()),
-            L2_CHAIN_ID_KEY => Some(self.cfg.l2_chain_id.to_be_bytes().to_vec()),
-            L2_ROLLUP_CONFIG_KEY => match &self.cfg.rollup_config {
+            L1_HEAD_KEY => Some(self.cfg.request.l1_head_hash.to_vec()),
+            L2_OUTPUT_ROOT_KEY => Some(self.cfg.request.agreed_l2_output_root.to_vec()),
+            L2_CLAIM_KEY => Some(self.cfg.request.l2_output_root.to_vec()),
+            L2_CLAIM_BLOCK_NUMBER_KEY => {
+                Some(self.cfg.request.l2_block_number.to_be_bytes().to_vec())
+            }
+            L2_CHAIN_ID_KEY => Some(self.cfg.config.l2_chain_id.to_be_bytes().to_vec()),
+            L2_ROLLUP_CONFIG_KEY => match &self.cfg.config.rollup_config {
                 None => {
                     tracing::error!("Rollup config is not provided in derivation request");
                     None
                 }
                 Some(rollup_config) => serde_json::to_vec(rollup_config).ok(),
             },
-            L1_CONFIG_KEY => match &self.cfg.l1_chain_config {
+            L1_CONFIG_KEY => match &self.cfg.config.l1_chain_config {
                 None => {
                     tracing::error!("L1 chain config is not provided in derivation request");
                     None
