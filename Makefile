@@ -78,4 +78,10 @@ sync-lock:
 	# Downgrade the crate that does not exist in op-rs, which was unnecessarily upgraded by cargo update.
 	cargo build
 
+PHONY: test-deploy-tx
+test-deploy-tx:
+	cd tx && npx hardhat run ./scripts/deploy.js --network eth_local
 
+PHONY: test-tx
+test-tx:
+	cd tx && npx hardhat run ./scripts/exec.js --network eth_local
