@@ -50,7 +50,7 @@ server-up:
 		--l1=http://localhost:$$L1_GETH_PORT \
 		--beacon=http://localhost:$$L1_BEACON_PORT \
 		--l1-chain-config=$$L1_CHAIN_CONFIG \
-		--initial-claimed-l2=103 \
+		--initial-claimed-l2=53 \
 		--ttl=1800 \
 		--max-preimage-distance=100 \
 		--purger-interval-seconds=100
