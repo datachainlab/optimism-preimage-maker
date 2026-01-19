@@ -8,7 +8,6 @@
   },
   "license": "TBD",
   "devDependencies": {
-    "@nomicfoundation/hardhat-foundry": "^1.1.3",
     "@nomicfoundation/hardhat-toolbox": "^4.0.0",
     "@openzeppelin/hardhat-upgrades": "^3.7.0",
     "hardhat": "^2.22.17",
