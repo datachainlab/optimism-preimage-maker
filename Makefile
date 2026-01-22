@@ -80,7 +80,7 @@ sync-lock:
 
 .PHONY: test-deploy-tx
 test-deploy-tx:
-	cd tx && npx hardhat run ./scripts/deploy.js --network eth_local
+	cd tx && npm install && npx hardhat run ./scripts/deploy.js --network eth_local
 
 .PHONY: test-tx
 test-tx:
