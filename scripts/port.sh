@@ -14,4 +14,6 @@ hostPort "op-cl-" 8547 l2RollupPort
 hostPort "op-el-" 8545 l2GethPort
 
 echo "{\"l1BeaconPort\": ${l1BeaconPort}, \"l1GethPort\": ${l1GethPort}, \"l2RollupPort\": ${l2RollupPort}, \"l2GethPort\": ${l2GethPort}}" | jq > hostPort.json
+sed "s/L2_GETH_PORT/${l2GethPort}/g" "$(dirname "$0")/../tx/hardhat.config.template" > "$(dirname "$0")/../tx/hardhat.config.js"
+
 cat hostPort.json
