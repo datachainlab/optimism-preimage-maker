@@ -40,6 +40,9 @@ async fn main() -> anyhow::Result<()> {
         .with(tracing_subscriber::fmt::layer())
         .with(filter)
         .init();
+    #[cfg(feature = "minimal")]
+    info!("start optimism-preimage-maker for minimal ");
+    #[cfg(not(feature = "minimal"))]
     info!("start optimism-preimage-maker");
 
     let http_client_timeout = Duration::from_secs(config.http_client_timeout_seconds);

@@ -225,6 +225,15 @@ where
                 time::sleep(time::Duration::from_secs(10)).await;
                 continue;
             }
+            if !finality_l1
+                .data
+                .sync_aggregate
+                .is_sufficient_participation()
+            {
+                time::sleep(time::Duration::from_secs(10)).await;
+                continue;
+            }
+
             break (finality_l1, raw_finality_l1);
         };
         let l1_head_hash = finality_l1.data.finalized_header.execution.block_hash;
@@ -497,6 +506,8 @@ mod tests {
         });
 
         // Beacon client mock
+        // 32 bits all set to 1 (100% participation) for minimal feature
+        let sync_committee_bits = "0x".to_string() + &"ff".repeat(4);
         let update_json = serde_json::json!({
              "data": {
                  "finalized_header": {
@@ -504,6 +515,9 @@ mod tests {
                          "block_hash": l1_head,
                          "block_number": "95"
                      }
+                 },
+                 "sync_aggregate": {
+                     "sync_committee_bits": sync_committee_bits
                  }
              }
         })
@@ -775,6 +789,8 @@ mod tests {
             output_roots,
         });
 
+        // 32 bits all set to 1 (100% participation) for minimal feature
+        let sync_committee_bits = "0x".to_string() + &"ff".repeat(4);
         let update_json = serde_json::json!({
              "data": {
                  "finalized_header": {
@@ -782,6 +798,9 @@ mod tests {
                          "block_hash": l1_head,
                          "block_number": "95"
                      }
+                 },
+                 "sync_aggregate": {
+                     "sync_committee_bits": sync_committee_bits
                  }
              }
         })
@@ -886,6 +905,8 @@ mod tests {
             output_roots,
         });
 
+        // 32 bits all set to 1 (100% participation) for minimal feature
+        let sync_committee_bits = "0x".to_string() + &"ff".repeat(4);
         let update_json = serde_json::json!({
              "data": {
                  "finalized_header": {
@@ -893,6 +914,9 @@ mod tests {
                          "block_hash": l1_head,
                          "block_number": "95"
                      }
+                 },
+                 "sync_aggregate": {
+                     "sync_committee_bits": sync_committee_bits
                  }
              }
         })
