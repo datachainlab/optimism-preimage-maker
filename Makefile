@@ -59,7 +59,7 @@ server-up:
 test:
 	@L2_ROLLUP_PORT=$$(jq -r '.l2RollupPort' hostPort.json);\
 	L2_GETH_PORT=$$(jq -r '.l2GethPort' hostPort.json);\
-	L2_ROLLUP_ADDR=http://localhost:$$L2_ROLLUP_PORT L2_GETH_ADDR=http://localhost:$$L2_GETH_PORT cargo test --manifest-path=./server/Cargo.toml
+	L2_ROLLUP_ADDR=http://localhost:$$L2_ROLLUP_PORT L2_GETH_ADDR=http://localhost:$$L2_GETH_PORT cargo test --features=minimal --manifest-path=./server/Cargo.toml
 
 .PHONY: inspect
 inspect:

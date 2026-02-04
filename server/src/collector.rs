@@ -506,6 +506,8 @@ mod tests {
         });
 
         // Beacon client mock
+        // 32 bits all set to 1 (100% participation) for minimal feature
+        let sync_committee_bits = "0x".to_string() + &"ff".repeat(4);
         let update_json = serde_json::json!({
              "data": {
                  "finalized_header": {
@@ -513,6 +515,9 @@ mod tests {
                          "block_hash": l1_head,
                          "block_number": "95"
                      }
+                 },
+                 "sync_aggregate": {
+                     "sync_committee_bits": sync_committee_bits
                  }
              }
         })
@@ -784,6 +789,8 @@ mod tests {
             output_roots,
         });
 
+        // 32 bits all set to 1 (100% participation) for minimal feature
+        let sync_committee_bits = "0x".to_string() + &"ff".repeat(4);
         let update_json = serde_json::json!({
              "data": {
                  "finalized_header": {
@@ -791,6 +798,9 @@ mod tests {
                          "block_hash": l1_head,
                          "block_number": "95"
                      }
+                 },
+                 "sync_aggregate": {
+                     "sync_committee_bits": sync_committee_bits
                  }
              }
         })
@@ -895,6 +905,8 @@ mod tests {
             output_roots,
         });
 
+        // 32 bits all set to 1 (100% participation) for minimal feature
+        let sync_committee_bits = "0x".to_string() + &"ff".repeat(4);
         let update_json = serde_json::json!({
              "data": {
                  "finalized_header": {
@@ -902,6 +914,9 @@ mod tests {
                          "block_hash": l1_head,
                          "block_number": "95"
                      }
+                 },
+                 "sync_aggregate": {
+                     "sync_committee_bits": sync_committee_bits
                  }
              }
         })
