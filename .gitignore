@@ -28,3 +28,7 @@ target/
 chain
 .preimage
 .finalized_l1
+node_modules
+tx/hardhat.config.js
+!package.json
+!package-lock.json

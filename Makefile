@@ -2,7 +2,7 @@ SED = $(shell which gsed 2>/dev/null || echo sed)
 
 .PHONY: chain
 chain:
-	git clone --depth 1 -b v1.16.5 https://github.com/ethereum-optimism/optimism ./chain
+	git clone --depth 1 -b op-node/v1.16.6 https://github.com/ethereum-optimism/optimism ./chain
 	# override devnet config
 	cp kurtosis/kurtosis.yaml ./chain/kurtosis-devnet/optimism-package-trampoline/kurtosis.yml
 	cp kurtosis/main.star ./chain/kurtosis-devnet/optimism-package-trampoline/main.star
@@ -50,7 +50,7 @@ server-up:
 		--l1=http://localhost:$$L1_GETH_PORT \
 		--beacon=http://localhost:$$L1_BEACON_PORT \
 		--l1-chain-config=$$L1_CHAIN_CONFIG \
-		--initial-claimed-l2=103 \
+		--initial-claimed-l2=53 \
 		--ttl=1800 \
 		--max-preimage-distance=100 \
 		--purger-interval-seconds=100
@@ -70,7 +70,7 @@ devnet-down:
 	@ENCLAVE=$$(kurtosis enclave ls | awk 'NR==2 {print $$1}'); kurtosis enclave rm -f $$ENCLAVE
 	kurtosis engine stop
 
-PHONY: sync-lock
+.PHONY: sync-lock
 sync-lock:
 	cargo update -p kona-client
 	cd scripts && python sync_lock.py
@@ -78,4 +78,10 @@ sync-lock:
 	# Downgrade the crate that does not exist in op-rs, which was unnecessarily upgraded by cargo update.
 	cargo build
 
+.PHONY: test-deploy-tx
+test-deploy-tx:
+	cd tx && npm install && npx hardhat run ./scripts/deploy.js --network eth_local
 
+.PHONY: test-tx
+test-tx:
+	cd tx && npx hardhat run ./scripts/exec.js --network eth_local

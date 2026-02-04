@@ -65,6 +65,9 @@ jobs:
         run: |
           make devnet-up
           make set-port
+          make test-deploy-tx
+          sleep 30
+          make test-tx
       - name: Start preimage server
         run: make server-up &
       - name: Wait for chain to get ready
