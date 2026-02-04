@@ -225,6 +225,15 @@ where
                 time::sleep(time::Duration::from_secs(10)).await;
                 continue;
             }
+            if !finality_l1
+                .data
+                .sync_aggregate
+                .is_sufficient_participation()
+            {
+                time::sleep(time::Duration::from_secs(10)).await;
+                continue;
+            }
+
             break (finality_l1, raw_finality_l1);
         };
         let l1_head_hash = finality_l1.data.finalized_header.execution.block_hash;
