@@ -32,6 +32,29 @@ impl DerivationDriver for RealDerivationDriver {
     }
 }
 
+/// Builds a batch of block ranges for derivation.
+///
+/// Each batch element is exactly `distance` in size.
+/// Returns an empty vector if there is not enough distance to `finalized_l2`.
+fn build_batch(
+    latest_l2: u64,
+    finalized_l2: u64,
+    distance: u64,
+    max_concurrency: usize,
+) -> Vec<(u64, u64)> {
+    let mut batch = Vec::new();
+    let mut current = latest_l2;
+    for _ in 0..max_concurrency {
+        let end = current + distance;
+        if end > finalized_l2 {
+            break;
+        }
+        batch.push((current, end));
+        current = end;
+    }
+    batch
+}
+
 pub struct PreimageCollector<T, F, L, B, D>
 where
     T: PreimageRepository,
@@ -46,7 +69,7 @@ where
     pub config: Arc<DerivationConfig>,
     pub preimage_repository: Arc<T>,
     pub finalized_l1_repository: Arc<F>,
-    pub max_distance: u64,
+    pub distance: u64,
     pub max_concurrency: usize,
     pub initial_claimed: u64,
     pub interval_seconds: u64,
@@ -96,7 +119,7 @@ where
     ///    - Returns `None` if this operation fails.
     ///
     /// 3. **Batch Collection Preparation**:
-    ///    - Prepares a batch of block ranges within the defined constraints (`max_concurrency` and `max_distance`)
+    ///    - Prepares a batch of block ranges within the defined constraints (`max_concurrency` and `distance`)
     ///      for processing, starting from the provided `latest_l2` and up to the finalized L2 block in the
     ///      synchronization status.
     ///
@@ -128,22 +151,21 @@ where
             }
         };
 
-        // Get latest l1 head hash for L2 derivation
-        let (l1_head_hash, raw_finality_l1) = self.get_l1_head_hash(&sync_status).await?;
-
-        // Collect preimage from latest_l2 to finalized_l2
-        let mut batch = Vec::new();
-        let mut current = latest_l2;
-        for _ in 0..self.max_concurrency {
-            if current >= sync_status.finalized_l2.number {
-                break;
-            }
-            let end = std::cmp::min(current + self.max_distance, sync_status.finalized_l2.number);
-            batch.push((current, end));
-            current = end;
-        }
+        let batch = build_batch(
+            latest_l2,
+            sync_status.finalized_l2.number,
+            self.distance,
+            self.max_concurrency,
+        );
 
         info!("derivation batch={:?}", batch);
+
+        if batch.is_empty() {
+            return None;
+        }
+
+        // Get latest l1 head hash for L2 derivation
+        let (l1_head_hash, raw_finality_l1) = self.get_l1_head_hash(&sync_status).await?;
 
         // Save finalized_l1
         if let Err(e) = self
@@ -155,10 +177,6 @@ where
                 "Failed to save finalized l1 head hash to db l1_head={}, {:?}",
                 l1_head_hash, e
             );
-        }
-
-        if batch.is_empty() {
-            return None;
         }
 
         self.parallel_collect(l1_head_hash, batch)
@@ -567,7 +585,7 @@ mod tests {
             config: derivation_config,
             preimage_repository: mock_preimage_repo.clone(),
             finalized_l1_repository: mock_finalized_repo.clone(),
-            max_distance: 10,
+            distance: 10,
             max_concurrency: 2,
             initial_claimed: 0,
             interval_seconds: 1,
@@ -677,7 +695,7 @@ mod tests {
             config: derivation_config,
             preimage_repository: mock_preimage_repo,
             finalized_l1_repository: mock_finalized_repo,
-            max_distance: 10,
+            distance: 10,
             max_concurrency: 2,
             initial_claimed: 0,
             interval_seconds: 1,
@@ -742,7 +760,7 @@ mod tests {
             config: derivation_config,
             preimage_repository: mock_preimage_repo,
             finalized_l1_repository: mock_finalized_repo,
-            max_distance: 10,
+            distance: 10,
             max_concurrency: 2,
             initial_claimed: 0,
             interval_seconds: 1,
@@ -833,7 +851,7 @@ mod tests {
             config: derivation_config,
             preimage_repository: mock_preimage_repo.clone(),
             finalized_l1_repository: mock_finalized_repo,
-            max_distance: 10,
+            distance: 10,
             max_concurrency: 2,
             initial_claimed: 0,
             interval_seconds: 1,
@@ -953,7 +971,7 @@ mod tests {
             config: derivation_config,
             preimage_repository: mock_preimage_repo.clone(),
             finalized_l1_repository: mock_finalized_repo,
-            max_distance: 10,
+            distance: 10,
             max_concurrency: 2,
             initial_claimed: 0,
             interval_seconds: 1,
@@ -971,5 +989,53 @@ mod tests {
         // Verify only 1 preimage saved
         assert_eq!(mock_preimage_repo.upserted.lock().unwrap().len(), 1);
         assert_eq!(mock_preimage_repo.upserted.lock().unwrap()[0].claimed, 110);
+    }
+
+    #[test]
+    fn test_build_batch_full_batches() {
+        // latest_l2=100, finalized_l2=150, distance=10, max_concurrency=3
+        // Expected: [(100,110), (110,120), (120,130)]
+        let batch = build_batch(100, 150, 10, 3);
+        assert_eq!(batch, vec![(100, 110), (110, 120), (120, 130)]);
+    }
+
+    #[test]
+    fn test_build_batch_limited_by_finalized() {
+        // latest_l2=100, finalized_l2=125, distance=10, max_concurrency=5
+        // Expected: [(100,110), (110,120)] (120+10=130 > 125, so stop)
+        let batch = build_batch(100, 125, 10, 5);
+        assert_eq!(batch, vec![(100, 110), (110, 120)]);
+    }
+
+    #[test]
+    fn test_build_batch_limited_by_concurrency() {
+        // latest_l2=100, finalized_l2=200, distance=10, max_concurrency=2
+        // Expected: [(100,110), (110,120)] (limited by max_concurrency)
+        let batch = build_batch(100, 200, 10, 2);
+        assert_eq!(batch, vec![(100, 110), (110, 120)]);
+    }
+
+    #[test]
+    fn test_build_batch_empty_not_enough_distance() {
+        // latest_l2=100, finalized_l2=105, distance=10, max_concurrency=3
+        // Expected: [] (100+10=110 > 105)
+        let batch = build_batch(100, 105, 10, 3);
+        assert!(batch.is_empty());
+    }
+
+    #[test]
+    fn test_build_batch_empty_same_block() {
+        // latest_l2=100, finalized_l2=100, distance=10, max_concurrency=3
+        // Expected: []
+        let batch = build_batch(100, 100, 10, 3);
+        assert!(batch.is_empty());
+    }
+
+    #[test]
+    fn test_build_batch_exact_boundary() {
+        // latest_l2=100, finalized_l2=120, distance=10, max_concurrency=3
+        // Expected: [(100,110), (110,120)] (110+10=120 == 120, so included)
+        let batch = build_batch(100, 120, 10, 3);
+        assert_eq!(batch, vec![(100, 110), (110, 120)]);
     }
 }

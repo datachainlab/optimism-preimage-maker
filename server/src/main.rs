@@ -93,7 +93,7 @@ async fn main() -> anyhow::Result<()> {
         beacon_client: Arc::new(beacon_client),
         derivation_driver: Arc::new(RealDerivationDriver),
         config: Arc::new(derivation_config),
-        max_distance: config.max_preimage_distance,
+        distance: config.preimage_distance,
         initial_claimed: config.initial_claimed_l2,
         interval_seconds: config.collector_interval_seconds,
         preimage_repository: preimage_repository.clone(),
