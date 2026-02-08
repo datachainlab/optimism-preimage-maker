@@ -52,7 +52,7 @@ server-up:
 		--l1-chain-config=$$L1_CHAIN_CONFIG \
 		--initial-claimed-l2=53 \
 		--ttl=1800 \
-		--max-preimage-distance=100 \
+		--preimage-distance=50 \
 		--purger-interval-seconds=100
 
 .PHONY: test

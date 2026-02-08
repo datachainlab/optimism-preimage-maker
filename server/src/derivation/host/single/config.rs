@@ -43,9 +43,9 @@ pub struct Config {
     #[clap(long, default_value = ".finalized_l1")]
     pub finalized_l1_dir: String,
 
-    /// Max preimage distance ( from agreed to claimed) per one call
+    /// Preimage distance (from agreed to claimed) per one derivation
     #[clap(long, default_value = "100")]
-    pub max_preimage_distance: u64,
+    pub preimage_distance: u64,
 
     /// Max concurrency of preimage collector.
     #[clap(long, default_value = "10")]

@@ -78,7 +78,7 @@ pub async fn derivation_in_light_client(
 pub async fn test_derivation_success() {
     init();
     let l2_client = get_l2_client();
-
+    const INITIAL_CLAIMED: u64 = 53;
     let client = reqwest::Client::new();
     let root_path = "http://localhost:10080";
     let latest_metadata: PreimageMetadata = client
@@ -93,7 +93,7 @@ pub async fn test_derivation_success() {
         .post(format!("{root_path}/list_metadata"))
         .json(&ListMetadataRequest {
             lt_claimed: latest_metadata.claimed + 1,
-            gt_claimed: 100,
+            gt_claimed: INITIAL_CLAIMED,
         })
         .send()
         .await
@@ -104,7 +104,7 @@ pub async fn test_derivation_success() {
     assert!(!metadata_list.is_empty(), "No metadata found");
 
     for metadata in metadata_list {
-        assert!(metadata.claimed > 100);
+        assert!(metadata.claimed > INITIAL_CLAIMED);
         assert!(metadata.claimed < latest_metadata.claimed + 1);
 
         // Assert finalized l1
