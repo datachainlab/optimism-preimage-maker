@@ -43,10 +43,6 @@ pub struct Config {
     #[clap(long, default_value = ".finalized_l1")]
     pub finalized_l1_dir: String,
 
-    /// light client update directory if specified. (ex. .light_client_update)
-    #[clap(long, default_value = ".light_client_update")]
-    pub light_client_update_dir: String,
-
     /// Preimage distance (from agreed to claimed) per one derivation
     #[clap(long, default_value = "100")]
     pub preimage_distance: u64,

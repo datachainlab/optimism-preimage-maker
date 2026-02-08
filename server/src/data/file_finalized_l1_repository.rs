@@ -1,4 +1,4 @@
-use crate::data::finalized_l1_repository::FinalizedL1Repository;
+use crate::data::finalized_l1_repository::{FinalizedL1Data, FinalizedL1Repository};
 use alloy_primitives::B256;
 use axum::async_trait;
 use std::time;
@@ -51,17 +51,19 @@ impl FileFinalizedL1Repository {
 
 #[async_trait]
 impl FinalizedL1Repository for FileFinalizedL1Repository {
-    async fn upsert(&self, l1_head_hash: &B256, raw_finalized_l1: String) -> anyhow::Result<()> {
+    async fn upsert(&self, l1_head_hash: &B256, data: FinalizedL1Data) -> anyhow::Result<()> {
         let path = self.path(l1_head_hash);
         let tmp_path = format!("{path}.tmp");
-        fs::write(&tmp_path, raw_finalized_l1).await?;
+        let json = serde_json::to_string(&data)?;
+        fs::write(&tmp_path, json).await?;
         fs::rename(&tmp_path, &path).await?;
         Ok(())
     }
 
-    async fn get(&self, l1_head_hash: &B256) -> anyhow::Result<String> {
-        let raw_finalized_l1 = fs::read_to_string(self.path(l1_head_hash)).await?;
-        Ok(raw_finalized_l1)
+    async fn get(&self, l1_head_hash: &B256) -> anyhow::Result<FinalizedL1Data> {
+        let json = fs::read_to_string(self.path(l1_head_hash)).await?;
+        let data: FinalizedL1Data = serde_json::from_str(&json)?;
+        Ok(data)
     }
 
     async fn purge_expired(&self) -> anyhow::Result<()> {
@@ -124,12 +126,18 @@ mod tests {
         let repo = FileFinalizedL1Repository::new(&dir, Duration::from_secs(1)).expect("new repo");
 
         let h = B256::from([1u8; 32]);
-        let data = "some json data".to_string();
+        let data = FinalizedL1Data {
+            raw_finality_update: r#"{"finality": "data"}"#.to_string(),
+            raw_light_client_update: r#"{"lc_update": "data"}"#.to_string(),
+            period: 1664,
+        };
 
         repo.upsert(&h, data.clone()).await.expect("upsert");
 
         let got = repo.get(&h).await.expect("get");
-        assert_eq!(got, data);
+        assert_eq!(got.raw_finality_update, data.raw_finality_update);
+        assert_eq!(got.raw_light_client_update, data.raw_light_client_update);
+        assert_eq!(got.period, data.period);
 
         let missing = B256::from([2u8; 32]);
         let res = repo.get(&missing).await;
@@ -146,16 +154,23 @@ mod tests {
             FileFinalizedL1Repository::new(&dir, Duration::from_millis(100)).expect("new repo");
 
         let h1 = B256::from([0xaau8; 32]);
-        let data = "old data".to_string();
-        repo.upsert(&h1, data).await.expect("upsert h1");
+        let data1 = FinalizedL1Data {
+            raw_finality_update: "old finality".to_string(),
+            raw_light_client_update: "old lc".to_string(),
+            period: 100,
+        };
+        repo.upsert(&h1, data1).await.expect("upsert h1");
 
         // Wait for expiration
         tokio::time::sleep(Duration::from_millis(200)).await;
 
         let h2 = B256::from([0xbbu8; 32]);
-        repo.upsert(&h2, "new data".to_string())
-            .await
-            .expect("upsert h2");
+        let data2 = FinalizedL1Data {
+            raw_finality_update: "new finality".to_string(),
+            raw_light_client_update: "new lc".to_string(),
+            period: 200,
+        };
+        repo.upsert(&h2, data2).await.expect("upsert h2");
 
         // Purge should remove h1 but keep h2 (assuming touch updates mod time or we rely on creation time)
         // Note: The implementation uses `metadata.created()`. File creation time is usually fixed.
@@ -174,7 +189,12 @@ mod tests {
 
         // Create a normal file via upsert
         let h1 = B256::from([0xccu8; 32]);
-        repo.upsert(&h1, "data".to_string()).await.expect("upsert");
+        let data = FinalizedL1Data {
+            raw_finality_update: "finality".to_string(),
+            raw_light_client_update: "lc".to_string(),
+            period: 100,
+        };
+        repo.upsert(&h1, data).await.expect("upsert");
 
         // Manually create a .tmp file
         let path = repo.path(&h1);

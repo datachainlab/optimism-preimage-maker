@@ -1,5 +1,4 @@
-use crate::data::finalized_l1_repository::FinalizedL1Repository;
-use crate::data::light_client_update_repository::LightClientUpdateRepository;
+use crate::data::finalized_l1_repository::{FinalizedL1Data, FinalizedL1Repository};
 use crate::data::preimage_repository::{PreimageMetadata, PreimageRepository};
 use alloy_primitives::B256;
 use anyhow::{Context, Result};
@@ -18,7 +17,6 @@ use tracing::{error, info};
 pub struct SharedState {
     pub preimage_repository: Arc<dyn PreimageRepository>,
     pub finalized_l1_repository: Arc<dyn FinalizedL1Repository>,
-    pub light_client_update_repository: Arc<dyn LightClientUpdateRepository>,
 }
 
 async fn start_http_server(addr: &str, state: SharedState) -> Result<()> {
@@ -27,7 +25,6 @@ async fn start_http_server(addr: &str, state: SharedState) -> Result<()> {
         .route("/get_latest_metadata", post(get_latest_metadata))
         .route("/list_metadata", post(list_metadata))
         .route("/get_finalized_l1", post(get_finalized_l1))
-        .route("/get_light_client_update", post(get_light_client_update))
         .with_state(Arc::new(state));
 
     let listener = TcpListener::bind(addr).await?;
@@ -142,46 +139,20 @@ pub struct GetFinalizedL1Request {
 async fn get_finalized_l1(
     State(state): State<Arc<SharedState>>,
     Json(payload): Json<GetFinalizedL1Request>,
-) -> (StatusCode, String) {
+) -> (StatusCode, Json<Option<FinalizedL1Data>>) {
     info!("request: get_finalized_l1: {:?}", payload);
     let result = state
         .finalized_l1_repository
         .get(&payload.l1_head_hash)
         .await;
     match result {
-        Ok(v) => (StatusCode::OK, v),
+        Ok(data) => (StatusCode::OK, Json(Some(data))),
         Err(e) => {
             error!(
                 "failed to get finalized l1: {:?}, hash:{:?}",
                 e, payload.l1_head_hash
             );
-            (StatusCode::NOT_FOUND, "".to_string())
-        }
-    }
-}
-
-#[derive(Debug, Clone, Deserialize, Serialize)]
-pub struct GetLightClientUpdateRequest {
-    pub period: u64,
-}
-
-async fn get_light_client_update(
-    State(state): State<Arc<SharedState>>,
-    Json(payload): Json<GetLightClientUpdateRequest>,
-) -> (StatusCode, String) {
-    info!("request: get_light_client_update: {:?}", payload);
-    let result = state
-        .light_client_update_repository
-        .get(payload.period)
-        .await;
-    match result {
-        Ok(v) => (StatusCode::OK, v),
-        Err(e) => {
-            error!(
-                "failed to get light client update: {:?}, period:{}",
-                e, payload.period
-            );
-            (StatusCode::NOT_FOUND, "".to_string())
+            (StatusCode::NOT_FOUND, Json(None))
         }
     }
 }
@@ -246,50 +217,20 @@ mod tests {
     }
 
     struct MockFinalizedL1Repository {
-        data: Arc<Mutex<std::collections::HashMap<B256, String>>>,
+        data: Arc<Mutex<std::collections::HashMap<B256, FinalizedL1Data>>>,
     }
 
     #[async_trait]
     impl FinalizedL1Repository for MockFinalizedL1Repository {
-        async fn upsert(
-            &self,
-            l1_head_hash: &B256,
-            raw_finalized_l1: String,
-        ) -> anyhow::Result<()> {
-            self.data
-                .lock()
-                .unwrap()
-                .insert(*l1_head_hash, raw_finalized_l1);
+        async fn upsert(&self, l1_head_hash: &B256, data: FinalizedL1Data) -> anyhow::Result<()> {
+            self.data.lock().unwrap().insert(*l1_head_hash, data);
             Ok(())
         }
-        async fn get(&self, l1_head_hash: &B256) -> anyhow::Result<String> {
+        async fn get(&self, l1_head_hash: &B256) -> anyhow::Result<FinalizedL1Data> {
             self.data
                 .lock()
                 .unwrap()
                 .get(l1_head_hash)
-                .cloned()
-                .ok_or(anyhow::anyhow!("not found"))
-        }
-        async fn purge_expired(&self) -> anyhow::Result<()> {
-            Ok(())
-        }
-    }
-
-    struct MockLightClientUpdateRepository {
-        data: Arc<Mutex<std::collections::HashMap<u64, String>>>,
-    }
-
-    #[async_trait]
-    impl LightClientUpdateRepository for MockLightClientUpdateRepository {
-        async fn upsert(&self, period: u64, raw: String) -> anyhow::Result<()> {
-            self.data.lock().unwrap().insert(period, raw);
-            Ok(())
-        }
-        async fn get(&self, period: u64) -> anyhow::Result<String> {
-            self.data
-                .lock()
-                .unwrap()
-                .get(&period)
                 .cloned()
                 .ok_or(anyhow::anyhow!("not found"))
         }
@@ -317,13 +258,9 @@ mod tests {
         let l1_repo = MockFinalizedL1Repository {
             data: Arc::new(Mutex::new(std::collections::HashMap::new())),
         };
-        let lc_repo = MockLightClientUpdateRepository {
-            data: Arc::new(Mutex::new(std::collections::HashMap::new())),
-        };
         Arc::new(SharedState {
             preimage_repository: Arc::new(repo),
             finalized_l1_repository: Arc::new(l1_repo),
-            light_client_update_repository: Arc::new(lc_repo),
         })
     }
 
@@ -381,13 +318,9 @@ mod tests {
         let l1_repo = MockFinalizedL1Repository {
             data: Arc::new(Mutex::new(std::collections::HashMap::new())),
         };
-        let lc_repo = MockLightClientUpdateRepository {
-            data: Arc::new(Mutex::new(std::collections::HashMap::new())),
-        };
         let state = Arc::new(SharedState {
             preimage_repository: Arc::new(repo),
             finalized_l1_repository: Arc::new(l1_repo),
-            light_client_update_repository: Arc::new(lc_repo),
         });
 
         let req = GetPreimageRequest {
@@ -417,13 +350,9 @@ mod tests {
         let l1_repo = MockFinalizedL1Repository {
             data: Arc::new(Mutex::new(std::collections::HashMap::new())),
         };
-        let lc_repo = MockLightClientUpdateRepository {
-            data: Arc::new(Mutex::new(std::collections::HashMap::new())),
-        };
         let state = Arc::new(SharedState {
             preimage_repository: Arc::new(repo),
             finalized_l1_repository: Arc::new(l1_repo),
-            light_client_update_repository: Arc::new(lc_repo),
         });
 
         let (status, Json(opt)) = get_latest_metadata(State(state)).await;
@@ -468,41 +397,30 @@ mod tests {
     async fn test_get_finalized_l1() {
         let state = setup_state();
         let hash = B256::repeat_byte(0x99);
+        let data = FinalizedL1Data {
+            raw_finality_update: r#"{"finality":"data"}"#.to_string(),
+            raw_light_client_update: r#"{"lc":"data"}"#.to_string(),
+            period: 1664,
+        };
         state
             .finalized_l1_repository
-            .upsert(&hash, "data".into())
+            .upsert(&hash, data.clone())
             .await
             .unwrap();
 
         let req = GetFinalizedL1Request { l1_head_hash: hash };
-        let (status, data) = get_finalized_l1(State(state), Json(req)).await;
+        let (status, Json(result)) = get_finalized_l1(State(state), Json(req)).await;
         assert_eq!(status, StatusCode::OK);
-        assert_eq!(data, "data");
+        assert!(result.is_some());
+        let result = result.unwrap();
+        assert_eq!(result.raw_finality_update, data.raw_finality_update);
+        assert_eq!(result.raw_light_client_update, data.raw_light_client_update);
+        assert_eq!(result.period, data.period);
 
         let req_fail = GetFinalizedL1Request {
             l1_head_hash: B256::ZERO,
         };
         let (status, _) = get_finalized_l1(State(setup_state()), Json(req_fail)).await;
-        assert_eq!(status, StatusCode::NOT_FOUND);
-    }
-
-    #[tokio::test]
-    async fn test_get_light_client_update() {
-        let state = setup_state();
-        let period = 1664u64;
-        state
-            .light_client_update_repository
-            .upsert(period, r#"{"data":{}}"#.into())
-            .await
-            .unwrap();
-
-        let req = GetLightClientUpdateRequest { period };
-        let (status, data) = get_light_client_update(State(state), Json(req)).await;
-        assert_eq!(status, StatusCode::OK);
-        assert_eq!(data, r#"{"data":{}}"#);
-
-        let req_fail = GetLightClientUpdateRequest { period: 9999 };
-        let (status, _) = get_light_client_update(State(setup_state()), Json(req_fail)).await;
         assert_eq!(status, StatusCode::NOT_FOUND);
     }
 }
