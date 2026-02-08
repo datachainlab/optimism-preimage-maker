@@ -5,11 +5,13 @@ use optimism_derivation::oracle::MemoryOracleClient;
 use optimism_derivation::types::Preimages;
 use optimism_preimage_maker::client::beacon_client::LightClientFinalityUpdateResponse;
 use optimism_preimage_maker::client::l2_client::{HttpL2Client, L2Client};
+use optimism_preimage_maker::data::finalized_l1_repository::FinalizedL1Data;
 use optimism_preimage_maker::data::preimage_repository::PreimageMetadata;
 use optimism_preimage_maker::web::{
     GetFinalizedL1Request, GetPreimageRequest, ListMetadataRequest,
 };
 use prost::Message;
+use serde_json;
 use std::env;
 use tracing_subscriber::filter;
 use tracing_subscriber::layer::SubscriberExt;
@@ -108,7 +110,7 @@ pub async fn test_derivation_success() {
         assert!(metadata.claimed < latest_metadata.claimed + 1);
 
         // Assert finalized l1
-        let finalized_l1: LightClientFinalityUpdateResponse = client
+        let finalized_l1_data: FinalizedL1Data = client
             .post(format!("{root_path}/get_finalized_l1"))
             .json(&GetFinalizedL1Request {
                 l1_head_hash: metadata.l1_head,
@@ -119,6 +121,8 @@ pub async fn test_derivation_success() {
             .json()
             .await
             .unwrap();
+        let finalized_l1: LightClientFinalityUpdateResponse =
+            serde_json::from_value(finalized_l1_data.raw_finality_update).unwrap();
         assert_eq!(
             finalized_l1.data.finalized_header.execution.block_hash,
             metadata.l1_head
