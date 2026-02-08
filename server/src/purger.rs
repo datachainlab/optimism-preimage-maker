@@ -37,6 +37,7 @@ mod tests {
     use crate::data::preimage_repository::PreimageMetadata;
     use alloy_primitives::B256;
     use axum::async_trait;
+    use serde_json;
     use std::sync::{Arc, Mutex};
 
     struct MockPreimageRepository {
@@ -80,8 +81,8 @@ mod tests {
         }
         async fn get(&self, _l1_head_hash: &B256) -> anyhow::Result<FinalizedL1Data> {
             Ok(FinalizedL1Data {
-                raw_finality_update: "".to_string(),
-                raw_light_client_update: "".to_string(),
+                raw_finality_update: serde_json::json!({}),
+                raw_light_client_update: serde_json::json!({}),
                 period: 0,
             })
         }

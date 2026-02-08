@@ -1,15 +1,16 @@
 use alloy_primitives::B256;
 use axum::async_trait;
 use serde::{Deserialize, Serialize};
+use serde_json::Value;
 
 /// Data stored for each finalized L1 head hash.
 /// Contains the finality update and the light client update for the corresponding period.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct FinalizedL1Data {
     /// Raw JSON of the light client finality update from beacon API.
-    pub raw_finality_update: String,
+    pub raw_finality_update: Value,
     /// Raw JSON of the light client update for the period.
-    pub raw_light_client_update: String,
+    pub raw_light_client_update: Value,
     /// The sync committee period of the finalized slot.
     pub period: u64,
 }

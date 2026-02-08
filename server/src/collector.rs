@@ -282,9 +282,26 @@ where
                 }
             };
 
+        // Parse strings to serde_json::Value to avoid double-escaping when serialized
+        let finality_value: serde_json::Value = match serde_json::from_str(&raw_finality_l1) {
+            Ok(v) => v,
+            Err(e) => {
+                error!("Failed to parse finality update as JSON value: {:?}", e);
+                return None;
+            }
+        };
+        let light_client_update_value: serde_json::Value =
+            match serde_json::from_str(&raw_light_client_update) {
+                Ok(v) => v,
+                Err(e) => {
+                    error!("Failed to parse light client update as JSON value: {:?}", e);
+                    return None;
+                }
+            };
+
         let finalized_l1_data = FinalizedL1Data {
-            raw_finality_update: raw_finality_l1,
-            raw_light_client_update,
+            raw_finality_update: finality_value,
+            raw_light_client_update: light_client_update_value,
             period,
         };
 
@@ -519,8 +536,8 @@ mod tests {
         }
         async fn get(&self, _l1_head_hash: &B256) -> anyhow::Result<FinalizedL1Data> {
             Ok(FinalizedL1Data {
-                raw_finality_update: "".into(),
-                raw_light_client_update: "".into(),
+                raw_finality_update: serde_json::json!({}),
+                raw_light_client_update: serde_json::json!({}),
                 period: 0,
             })
         }

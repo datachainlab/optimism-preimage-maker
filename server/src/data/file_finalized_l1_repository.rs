@@ -85,6 +85,7 @@ impl FinalizedL1Repository for FileFinalizedL1Repository {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use serde_json;
     use std::time::Duration;
 
     #[test]
@@ -127,8 +128,8 @@ mod tests {
 
         let h = B256::from([1u8; 32]);
         let data = FinalizedL1Data {
-            raw_finality_update: r#"{"finality": "data"}"#.to_string(),
-            raw_light_client_update: r#"{"lc_update": "data"}"#.to_string(),
+            raw_finality_update: serde_json::json!({"finality": "data"}),
+            raw_light_client_update: serde_json::json!({"lc_update": "data"}),
             period: 1664,
         };
 
@@ -155,8 +156,8 @@ mod tests {
 
         let h1 = B256::from([0xaau8; 32]);
         let data1 = FinalizedL1Data {
-            raw_finality_update: "old finality".to_string(),
-            raw_light_client_update: "old lc".to_string(),
+            raw_finality_update: serde_json::json!({"old": "finality"}),
+            raw_light_client_update: serde_json::json!({"old": "lc"}),
             period: 100,
         };
         repo.upsert(&h1, data1).await.expect("upsert h1");
@@ -166,8 +167,8 @@ mod tests {
 
         let h2 = B256::from([0xbbu8; 32]);
         let data2 = FinalizedL1Data {
-            raw_finality_update: "new finality".to_string(),
-            raw_light_client_update: "new lc".to_string(),
+            raw_finality_update: serde_json::json!({"new": "finality"}),
+            raw_light_client_update: serde_json::json!({"new": "lc"}),
             period: 200,
         };
         repo.upsert(&h2, data2).await.expect("upsert h2");
@@ -190,8 +191,8 @@ mod tests {
         // Create a normal file via upsert
         let h1 = B256::from([0xccu8; 32]);
         let data = FinalizedL1Data {
-            raw_finality_update: "finality".to_string(),
-            raw_light_client_update: "lc".to_string(),
+            raw_finality_update: serde_json::json!({"finality": "data"}),
+            raw_light_client_update: serde_json::json!({"lc": "data"}),
             period: 100,
         };
         repo.upsert(&h1, data).await.expect("upsert");

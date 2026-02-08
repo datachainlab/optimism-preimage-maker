@@ -161,6 +161,7 @@ async fn get_finalized_l1(
 mod tests {
     use super::*;
     use axum::async_trait;
+    use serde_json;
     use std::sync::Mutex;
 
     struct MockPreimageRepository {
@@ -398,8 +399,8 @@ mod tests {
         let state = setup_state();
         let hash = B256::repeat_byte(0x99);
         let data = FinalizedL1Data {
-            raw_finality_update: r#"{"finality":"data"}"#.to_string(),
-            raw_light_client_update: r#"{"lc":"data"}"#.to_string(),
+            raw_finality_update: serde_json::json!({"finality": "data"}),
+            raw_light_client_update: serde_json::json!({"lc": "data"}),
             period: 1664,
         };
         state
