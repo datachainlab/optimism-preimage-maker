@@ -28,7 +28,6 @@ target/
 chain
 .preimage
 .finalized_l1
-.light_client_update
 node_modules
 tx/hardhat.config.js
 !package.json
