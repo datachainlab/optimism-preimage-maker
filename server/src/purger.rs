@@ -1,16 +1,24 @@
 use crate::data::finalized_l1_repository::FinalizedL1Repository;
+use crate::data::light_client_update_repository::LightClientUpdateRepository;
 use crate::data::preimage_repository::PreimageRepository;
 use std::sync::Arc;
 use std::time::Duration;
 use tokio::time;
 
-pub struct PreimagePurger<T: PreimageRepository, F: FinalizedL1Repository> {
+pub struct PreimagePurger<
+    T: PreimageRepository,
+    F: FinalizedL1Repository,
+    U: LightClientUpdateRepository,
+> {
     pub preimage_repository: Arc<T>,
     pub finalized_l1_repository: Arc<F>,
+    pub light_client_update_repository: Arc<U>,
     pub interval_seconds: u64,
 }
 
-impl<T: PreimageRepository, F: FinalizedL1Repository> PreimagePurger<T, F> {
+impl<T: PreimageRepository, F: FinalizedL1Repository, U: LightClientUpdateRepository>
+    PreimagePurger<T, F, U>
+{
     pub async fn start(&self) {
         loop {
             self.run_once().await;
@@ -25,6 +33,9 @@ impl<T: PreimageRepository, F: FinalizedL1Repository> PreimagePurger<T, F> {
         }
         if let Err(e) = self.finalized_l1_repository.purge_expired().await {
             tracing::error!("failed to purge expired finalized l1 heads: {:?}", e);
+        }
+        if let Err(e) = self.light_client_update_repository.purge_expired().await {
+            tracing::error!("failed to purge expired light client updates: {:?}", e);
         }
         tracing::info!("end: purge expired preimages");
     }
@@ -90,10 +101,28 @@ mod tests {
         }
     }
 
+    struct MockLightClientUpdateRepository {
+        pub purged: Arc<Mutex<bool>>,
+    }
+    #[async_trait]
+    impl LightClientUpdateRepository for MockLightClientUpdateRepository {
+        async fn upsert(&self, _period: u64, _raw: String) -> anyhow::Result<()> {
+            Ok(())
+        }
+        async fn get(&self, _period: u64) -> anyhow::Result<String> {
+            Ok("".to_string())
+        }
+        async fn purge_expired(&self) -> anyhow::Result<()> {
+            *self.purged.lock().unwrap() = true;
+            Ok(())
+        }
+    }
+
     #[tokio::test]
     async fn test_purger_run_once() {
         let p_purged = Arc::new(Mutex::new(false));
         let l1_purged = Arc::new(Mutex::new(false));
+        let lc_purged = Arc::new(Mutex::new(false));
 
         let p_repo = MockPreimageRepository {
             purged: p_purged.clone(),
@@ -101,10 +130,14 @@ mod tests {
         let l1_repo = MockFinalizedL1Repository {
             purged: l1_purged.clone(),
         };
+        let lc_repo = MockLightClientUpdateRepository {
+            purged: lc_purged.clone(),
+        };
 
         let purger = PreimagePurger {
             preimage_repository: Arc::new(p_repo),
             finalized_l1_repository: Arc::new(l1_repo),
+            light_client_update_repository: Arc::new(lc_repo),
             interval_seconds: 1,
         };
 
@@ -112,5 +145,6 @@ mod tests {
 
         assert!(*p_purged.lock().unwrap());
         assert!(*l1_purged.lock().unwrap());
+        assert!(*lc_purged.lock().unwrap());
     }
 }

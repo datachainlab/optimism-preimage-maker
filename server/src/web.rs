@@ -1,4 +1,5 @@
 use crate::data::finalized_l1_repository::FinalizedL1Repository;
+use crate::data::light_client_update_repository::LightClientUpdateRepository;
 use crate::data::preimage_repository::{PreimageMetadata, PreimageRepository};
 use alloy_primitives::B256;
 use anyhow::{Context, Result};
@@ -17,6 +18,7 @@ use tracing::{error, info};
 pub struct SharedState {
     pub preimage_repository: Arc<dyn PreimageRepository>,
     pub finalized_l1_repository: Arc<dyn FinalizedL1Repository>,
+    pub light_client_update_repository: Arc<dyn LightClientUpdateRepository>,
 }
 
 async fn start_http_server(addr: &str, state: SharedState) -> Result<()> {
@@ -25,6 +27,7 @@ async fn start_http_server(addr: &str, state: SharedState) -> Result<()> {
         .route("/get_latest_metadata", post(get_latest_metadata))
         .route("/list_metadata", post(list_metadata))
         .route("/get_finalized_l1", post(get_finalized_l1))
+        .route("/get_light_client_update", post(get_light_client_update))
         .with_state(Arc::new(state));
 
     let listener = TcpListener::bind(addr).await?;
@@ -157,6 +160,32 @@ async fn get_finalized_l1(
     }
 }
 
+#[derive(Debug, Clone, Deserialize, Serialize)]
+pub struct GetLightClientUpdateRequest {
+    pub period: u64,
+}
+
+async fn get_light_client_update(
+    State(state): State<Arc<SharedState>>,
+    Json(payload): Json<GetLightClientUpdateRequest>,
+) -> (StatusCode, String) {
+    info!("request: get_light_client_update: {:?}", payload);
+    let result = state
+        .light_client_update_repository
+        .get(payload.period)
+        .await;
+    match result {
+        Ok(v) => (StatusCode::OK, v),
+        Err(e) => {
+            error!(
+                "failed to get light client update: {:?}, period:{}",
+                e, payload.period
+            );
+            (StatusCode::NOT_FOUND, "".to_string())
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -246,6 +275,29 @@ mod tests {
         }
     }
 
+    struct MockLightClientUpdateRepository {
+        data: Arc<Mutex<std::collections::HashMap<u64, String>>>,
+    }
+
+    #[async_trait]
+    impl LightClientUpdateRepository for MockLightClientUpdateRepository {
+        async fn upsert(&self, period: u64, raw: String) -> anyhow::Result<()> {
+            self.data.lock().unwrap().insert(period, raw);
+            Ok(())
+        }
+        async fn get(&self, period: u64) -> anyhow::Result<String> {
+            self.data
+                .lock()
+                .unwrap()
+                .get(&period)
+                .cloned()
+                .ok_or(anyhow::anyhow!("not found"))
+        }
+        async fn purge_expired(&self) -> anyhow::Result<()> {
+            Ok(())
+        }
+    }
+
     fn setup_state() -> Arc<SharedState> {
         let repo = MockPreimageRepository {
             data: Arc::new(Mutex::new(vec![
@@ -265,9 +317,13 @@ mod tests {
         let l1_repo = MockFinalizedL1Repository {
             data: Arc::new(Mutex::new(std::collections::HashMap::new())),
         };
+        let lc_repo = MockLightClientUpdateRepository {
+            data: Arc::new(Mutex::new(std::collections::HashMap::new())),
+        };
         Arc::new(SharedState {
             preimage_repository: Arc::new(repo),
             finalized_l1_repository: Arc::new(l1_repo),
+            light_client_update_repository: Arc::new(lc_repo),
         })
     }
 
@@ -325,9 +381,13 @@ mod tests {
         let l1_repo = MockFinalizedL1Repository {
             data: Arc::new(Mutex::new(std::collections::HashMap::new())),
         };
+        let lc_repo = MockLightClientUpdateRepository {
+            data: Arc::new(Mutex::new(std::collections::HashMap::new())),
+        };
         let state = Arc::new(SharedState {
             preimage_repository: Arc::new(repo),
             finalized_l1_repository: Arc::new(l1_repo),
+            light_client_update_repository: Arc::new(lc_repo),
         });
 
         let req = GetPreimageRequest {
@@ -357,9 +417,13 @@ mod tests {
         let l1_repo = MockFinalizedL1Repository {
             data: Arc::new(Mutex::new(std::collections::HashMap::new())),
         };
+        let lc_repo = MockLightClientUpdateRepository {
+            data: Arc::new(Mutex::new(std::collections::HashMap::new())),
+        };
         let state = Arc::new(SharedState {
             preimage_repository: Arc::new(repo),
             finalized_l1_repository: Arc::new(l1_repo),
+            light_client_update_repository: Arc::new(lc_repo),
         });
 
         let (status, Json(opt)) = get_latest_metadata(State(state)).await;
@@ -419,6 +483,26 @@ mod tests {
             l1_head_hash: B256::ZERO,
         };
         let (status, _) = get_finalized_l1(State(setup_state()), Json(req_fail)).await;
+        assert_eq!(status, StatusCode::NOT_FOUND);
+    }
+
+    #[tokio::test]
+    async fn test_get_light_client_update() {
+        let state = setup_state();
+        let period = 1664u64;
+        state
+            .light_client_update_repository
+            .upsert(period, r#"{"data":{}}"#.into())
+            .await
+            .unwrap();
+
+        let req = GetLightClientUpdateRequest { period };
+        let (status, data) = get_light_client_update(State(state), Json(req)).await;
+        assert_eq!(status, StatusCode::OK);
+        assert_eq!(data, r#"{"data":{}}"#);
+
+        let req_fail = GetLightClientUpdateRequest { period: 9999 };
+        let (status, _) = get_light_client_update(State(setup_state()), Json(req_fail)).await;
         assert_eq!(status, StatusCode::NOT_FOUND);
     }
 }

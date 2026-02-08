@@ -1,6 +1,8 @@
 use crate::client::beacon_client::{BeaconClient, LightClientFinalityUpdateResponse};
 use crate::client::l2_client::{L2Client, SyncStatus};
+use crate::client::period::compute_period_from_slot;
 use crate::data::finalized_l1_repository::FinalizedL1Repository;
+use crate::data::light_client_update_repository::LightClientUpdateRepository;
 use crate::data::preimage_repository::{PreimageMetadata, PreimageRepository};
 use crate::derivation::host::single::handler::{Derivation, DerivationConfig, DerivationRequest};
 use alloy_primitives::B256;
@@ -55,10 +57,11 @@ fn build_batch(
     batch
 }
 
-pub struct PreimageCollector<T, F, L, B, D>
+pub struct PreimageCollector<T, F, U, L, B, D>
 where
     T: PreimageRepository,
     F: FinalizedL1Repository,
+    U: LightClientUpdateRepository,
     L: L2Client,
     B: BeaconClient,
     D: DerivationDriver,
@@ -69,16 +72,18 @@ where
     pub config: Arc<DerivationConfig>,
     pub preimage_repository: Arc<T>,
     pub finalized_l1_repository: Arc<F>,
+    pub light_client_update_repository: Arc<U>,
     pub distance: u64,
     pub max_concurrency: usize,
     pub initial_claimed: u64,
     pub interval_seconds: u64,
 }
 
-impl<T, F, L, B, D> PreimageCollector<T, F, L, B, D>
+impl<T, F, U, L, B, D> PreimageCollector<T, F, U, L, B, D>
 where
     T: PreimageRepository,
     F: FinalizedL1Repository,
+    U: LightClientUpdateRepository,
     L: L2Client,
     B: BeaconClient,
     D: DerivationDriver,
@@ -165,7 +170,8 @@ where
         }
 
         // Get latest l1 head hash for L2 derivation
-        let (l1_head_hash, raw_finality_l1) = self.get_l1_head_hash(&sync_status).await?;
+        let (l1_head_hash, raw_finality_l1, finalized_slot) =
+            self.get_l1_head_hash(&sync_status).await?;
 
         // Save finalized_l1
         if let Err(e) = self
@@ -176,6 +182,16 @@ where
             error!(
                 "Failed to save finalized l1 head hash to db l1_head={}, {:?}",
                 l1_head_hash, e
+            );
+        }
+
+        // Save LightClientUpdate for the period of finalized_slot
+        let period = compute_period_from_slot(finalized_slot);
+        info!("current period = {}", period);
+        if let Err(e) = self.save_light_client_update(period).await {
+            error!(
+                "Failed to save light client update for period {}: {:?}",
+                period, e
             );
         }
 
@@ -198,9 +214,10 @@ where
     /// - Logs error or warning messages when issues occur, including:
     ///   - Failure to fetch or deserialize the finality update.
     ///   - Delayed finality L1 blocks.
-    /// - If a valid and up-to-date finalized block is found, it returns the L1 block's hash and raw response.
+    /// - If a valid and up-to-date finalized block is found, it returns the L1 block's hash, raw response,
+    ///   and the beacon slot of the finalized header.
     ///
-    async fn get_l1_head_hash(&self, sync_status: &SyncStatus) -> Option<(B256, String)> {
+    async fn get_l1_head_hash(&self, sync_status: &SyncStatus) -> Option<(B256, String, u64)> {
         let mut attempts_count = 0;
         let (finality_l1, raw_finality_l1) = loop {
             let raw_finality_l1 = match self
@@ -255,11 +272,27 @@ where
             break (finality_l1, raw_finality_l1);
         };
         let l1_head_hash = finality_l1.data.finalized_header.execution.block_hash;
+        let finalized_slot = finality_l1.data.finalized_header.beacon.slot;
         info!(
-            "l1_head for derivation = {:?}",
-            finality_l1.data.finalized_header.execution
+            "l1_head for derivation = {:?}, finalized_slot = {}",
+            finality_l1.data.finalized_header.execution, finalized_slot
         );
-        Some((l1_head_hash, raw_finality_l1))
+        Some((l1_head_hash, raw_finality_l1, finalized_slot))
+    }
+
+    /// Fetches and saves a LightClientUpdate for the given period.
+    ///
+    /// This ensures that the LightClientUpdate is saved at the same time as the finality update,
+    /// guaranteeing consistency between the two data sources.
+    async fn save_light_client_update(&self, period: u64) -> anyhow::Result<()> {
+        let raw_update = self
+            .beacon_client
+            .get_raw_light_client_update(period)
+            .await?;
+        self.light_client_update_repository
+            .upsert(period, raw_update)
+            .await?;
+        Ok(())
     }
 
     /// Performs parallel collection of data within a specified range, processes it using multiple
@@ -426,6 +459,29 @@ mod tests {
         async fn get_raw_light_client_finality_update(&self) -> anyhow::Result<String> {
             self.finality_update.clone().ok_or(anyhow!("error"))
         }
+        async fn get_raw_light_client_update(&self, _period: u64) -> anyhow::Result<String> {
+            Ok(r#"{"data":{}}"#.to_string())
+        }
+        async fn get_genesis(&self) -> anyhow::Result<crate::client::beacon_client::GenesisData> {
+            Ok(crate::client::beacon_client::GenesisData { genesis_time: 0 })
+        }
+    }
+
+    struct MockLightClientUpdateRepository;
+
+    #[async_trait]
+    impl crate::data::light_client_update_repository::LightClientUpdateRepository
+        for MockLightClientUpdateRepository
+    {
+        async fn upsert(&self, _period: u64, _raw: String) -> anyhow::Result<()> {
+            Ok(())
+        }
+        async fn get(&self, _period: u64) -> anyhow::Result<String> {
+            Ok("{}".to_string())
+        }
+        async fn purge_expired(&self) -> anyhow::Result<()> {
+            Ok(())
+        }
     }
 
     struct MockDerivationDriver {
@@ -529,6 +585,9 @@ mod tests {
         let update_json = serde_json::json!({
              "data": {
                  "finalized_header": {
+                     "beacon": {
+                         "slot": "100"
+                     },
                      "execution": {
                          "block_hash": l1_head,
                          "block_number": "95"
@@ -578,6 +637,8 @@ mod tests {
             upserted: Arc::new(Mutex::new(vec![])),
         });
 
+        let mock_lc_update_repo = Arc::new(MockLightClientUpdateRepository);
+
         let collector = PreimageCollector {
             client: l2_client,
             beacon_client,
@@ -585,6 +646,7 @@ mod tests {
             config: derivation_config,
             preimage_repository: mock_preimage_repo.clone(),
             finalized_l1_repository: mock_finalized_repo.clone(),
+            light_client_update_repository: mock_lc_update_repo,
             distance: 10,
             max_concurrency: 2,
             initial_claimed: 0,
@@ -688,6 +750,8 @@ mod tests {
             upserted: Arc::new(Mutex::new(vec![])),
         });
 
+        let mock_lc_update_repo = Arc::new(MockLightClientUpdateRepository);
+
         let collector = PreimageCollector {
             client: l2_client,
             beacon_client,
@@ -695,6 +759,7 @@ mod tests {
             config: derivation_config,
             preimage_repository: mock_preimage_repo,
             finalized_l1_repository: mock_finalized_repo,
+            light_client_update_repository: mock_lc_update_repo,
             distance: 10,
             max_concurrency: 2,
             initial_claimed: 0,
@@ -753,6 +818,8 @@ mod tests {
             upserted: Arc::new(Mutex::new(vec![])),
         });
 
+        let mock_lc_update_repo = Arc::new(MockLightClientUpdateRepository);
+
         let collector = PreimageCollector {
             client: l2_client,
             beacon_client,
@@ -760,6 +827,7 @@ mod tests {
             config: derivation_config,
             preimage_repository: mock_preimage_repo,
             finalized_l1_repository: mock_finalized_repo,
+            light_client_update_repository: mock_lc_update_repo,
             distance: 10,
             max_concurrency: 2,
             initial_claimed: 0,
@@ -812,6 +880,9 @@ mod tests {
         let update_json = serde_json::json!({
              "data": {
                  "finalized_header": {
+                     "beacon": {
+                         "slot": "100"
+                     },
                      "execution": {
                          "block_hash": l1_head,
                          "block_number": "95"
@@ -843,6 +914,7 @@ mod tests {
         let mock_finalized_repo = Arc::new(MockFinalizedL1Repository {
             upserted: Arc::new(Mutex::new(vec![])),
         });
+        let mock_lc_update_repo = Arc::new(MockLightClientUpdateRepository);
 
         let collector = PreimageCollector {
             client: l2_client,
@@ -851,6 +923,7 @@ mod tests {
             config: derivation_config,
             preimage_repository: mock_preimage_repo.clone(),
             finalized_l1_repository: mock_finalized_repo,
+            light_client_update_repository: mock_lc_update_repo,
             distance: 10,
             max_concurrency: 2,
             initial_claimed: 0,
@@ -928,6 +1001,9 @@ mod tests {
         let update_json = serde_json::json!({
              "data": {
                  "finalized_header": {
+                     "beacon": {
+                         "slot": "100"
+                     },
                      "execution": {
                          "block_hash": l1_head,
                          "block_number": "95"
@@ -963,6 +1039,7 @@ mod tests {
         let mock_finalized_repo = Arc::new(MockFinalizedL1Repository {
             upserted: Arc::new(Mutex::new(vec![])),
         });
+        let mock_lc_update_repo = Arc::new(MockLightClientUpdateRepository);
 
         let collector = PreimageCollector {
             client: l2_client,
@@ -971,6 +1048,7 @@ mod tests {
             config: derivation_config,
             preimage_repository: mock_preimage_repo.clone(),
             finalized_l1_repository: mock_finalized_repo,
+            light_client_update_repository: mock_lc_update_repo,
             distance: 10,
             max_concurrency: 2,
             initial_claimed: 0,
