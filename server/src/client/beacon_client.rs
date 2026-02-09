@@ -208,8 +208,7 @@ impl BeaconClient for HttpBeaconClient {
 
         if updates.is_empty() {
             return Err(anyhow::anyhow!(
-                "No light client update found for period {}",
-                period
+                "No light client update found for period {period}"
             ));
         }
 

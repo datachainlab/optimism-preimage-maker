@@ -11,7 +11,6 @@ use optimism_preimage_maker::web::{
     GetFinalizedL1Request, GetPreimageRequest, ListMetadataRequest,
 };
 use prost::Message;
-use serde_json;
 use std::env;
 use tracing_subscriber::filter;
 use tracing_subscriber::layer::SubscriberExt;

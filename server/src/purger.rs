@@ -37,7 +37,7 @@ mod tests {
     use crate::data::preimage_repository::PreimageMetadata;
     use alloy_primitives::B256;
     use axum::async_trait;
-    use serde_json;
+
     use std::sync::{Arc, Mutex};
 
     struct MockPreimageRepository {

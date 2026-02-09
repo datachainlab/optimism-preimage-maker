@@ -161,7 +161,7 @@ async fn get_finalized_l1(
 mod tests {
     use super::*;
     use axum::async_trait;
-    use serde_json;
+
     use std::sync::Mutex;
 
     struct MockPreimageRepository {
