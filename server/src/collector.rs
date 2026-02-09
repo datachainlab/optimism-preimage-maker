@@ -262,25 +262,32 @@ where
 
         let l1_head_hash = finality_l1.data.finalized_header.execution.block_hash;
         let finalized_slot = finality_l1.data.finalized_header.beacon.slot;
-        let period = compute_period_from_slot(finalized_slot);
+        let signature_slot = finality_l1.data.signature_slot;
+        // Use signature_slot for period calculation to ensure consistency with relayer's
+        // GetSyncCommitteesFromTrustedToLatest which uses SignatureSlot-based period
+        let signature_period = compute_period_from_slot(signature_slot);
+        let finalized_period = compute_period_from_slot(finalized_slot);
 
         info!(
-            "l1_head for derivation = {:?}, finalized_slot = {}, period = {}",
-            finality_l1.data.finalized_header.execution, finalized_slot, period
+            "l1_head for derivation = {:?}, finalized_slot = {}, signature_slot = {}, signature_period = {}, finalized_period = {}",
+            finality_l1.data.finalized_header.execution, finalized_slot, signature_slot, signature_period, finalized_period
         );
 
         // Get light client update for the period
-        let raw_light_client_update =
-            match self.beacon_client.get_raw_light_client_update(period).await {
-                Ok(update) => update,
-                Err(e) => {
-                    error!(
-                        "Failed to get light client update for period {}: {:?}",
-                        period, e
-                    );
-                    return None;
-                }
-            };
+        let raw_light_client_update = match self
+            .beacon_client
+            .get_raw_light_client_update(signature_period)
+            .await
+        {
+            Ok(update) => update,
+            Err(e) => {
+                error!(
+                    "Failed to get light client update for period {}: {:?}",
+                    signature_period, e
+                );
+                return None;
+            }
+        };
 
         // Parse strings to serde_json::Value to avoid double-escaping when serialized
         let finality_value: serde_json::Value = match serde_json::from_str(&raw_finality_l1) {
@@ -302,7 +309,6 @@ where
         let finalized_l1_data = FinalizedL1Data {
             raw_finality_update: finality_value,
             raw_light_client_update: light_client_update_value,
-            period,
         };
 
         Some((l1_head_hash, finalized_l1_data))
@@ -538,7 +544,6 @@ mod tests {
             Ok(FinalizedL1Data {
                 raw_finality_update: serde_json::json!({}),
                 raw_light_client_update: serde_json::json!({}),
-                period: 0,
             })
         }
         async fn purge_expired(&self) -> anyhow::Result<()> {
@@ -591,7 +596,8 @@ mod tests {
                  },
                  "sync_aggregate": {
                      "sync_committee_bits": sync_committee_bits
-                 }
+                 },
+                 "signature_slot": "105"
              }
         })
         .to_string();
@@ -877,7 +883,8 @@ mod tests {
                  },
                  "sync_aggregate": {
                      "sync_committee_bits": sync_committee_bits
-                 }
+                 },
+                 "signature_slot": "105"
              }
         })
         .to_string();
@@ -996,7 +1003,8 @@ mod tests {
                  },
                  "sync_aggregate": {
                      "sync_committee_bits": sync_committee_bits
-                 }
+                 },
+                 "signature_slot": "105"
              }
         })
         .to_string();

@@ -401,7 +401,6 @@ mod tests {
         let data = FinalizedL1Data {
             raw_finality_update: serde_json::json!({"finality": "data"}),
             raw_light_client_update: serde_json::json!({"lc": "data"}),
-            period: 1664,
         };
         state
             .finalized_l1_repository
@@ -416,7 +415,6 @@ mod tests {
         let result = result.unwrap();
         assert_eq!(result.raw_finality_update, data.raw_finality_update);
         assert_eq!(result.raw_light_client_update, data.raw_light_client_update);
-        assert_eq!(result.period, data.period);
 
         let req_fail = GetFinalizedL1Request {
             l1_head_hash: B256::ZERO,

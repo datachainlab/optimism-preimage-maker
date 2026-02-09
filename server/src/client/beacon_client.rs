@@ -13,6 +13,8 @@ pub struct LightClientFinalityUpdateResponse {
 pub struct LightClientFinalityUpdate {
     pub finalized_header: LightClientHeader,
     pub sync_aggregate: SyncAggregate,
+    #[serde(deserialize_with = "deserialize_u64_from_str")]
+    pub signature_slot: u64,
 }
 
 #[derive(Debug, Clone, serde::Deserialize)]

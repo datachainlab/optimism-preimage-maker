@@ -9,10 +9,10 @@ use serde_json::Value;
 pub struct FinalizedL1Data {
     /// Raw JSON of the light client finality update from beacon API.
     pub raw_finality_update: Value,
-    /// Raw JSON of the light client update for the period.
+    /// Raw JSON of the light client update for the signature_slot's period.
+    /// This ensures consistency with the relayer's period calculation in
+    /// GetSyncCommitteesFromTrustedToLatest which uses SignatureSlot.
     pub raw_light_client_update: Value,
-    /// The sync committee period of the finalized slot.
-    pub period: u64,
 }
 
 #[async_trait]

@@ -130,7 +130,6 @@ mod tests {
         let data = FinalizedL1Data {
             raw_finality_update: serde_json::json!({"finality": "data"}),
             raw_light_client_update: serde_json::json!({"lc_update": "data"}),
-            period: 1664,
         };
 
         repo.upsert(&h, data.clone()).await.expect("upsert");
@@ -138,7 +137,6 @@ mod tests {
         let got = repo.get(&h).await.expect("get");
         assert_eq!(got.raw_finality_update, data.raw_finality_update);
         assert_eq!(got.raw_light_client_update, data.raw_light_client_update);
-        assert_eq!(got.period, data.period);
 
         let missing = B256::from([2u8; 32]);
         let res = repo.get(&missing).await;
@@ -158,7 +156,6 @@ mod tests {
         let data1 = FinalizedL1Data {
             raw_finality_update: serde_json::json!({"old": "finality"}),
             raw_light_client_update: serde_json::json!({"old": "lc"}),
-            period: 100,
         };
         repo.upsert(&h1, data1).await.expect("upsert h1");
 
@@ -169,7 +166,6 @@ mod tests {
         let data2 = FinalizedL1Data {
             raw_finality_update: serde_json::json!({"new": "finality"}),
             raw_light_client_update: serde_json::json!({"new": "lc"}),
-            period: 200,
         };
         repo.upsert(&h2, data2).await.expect("upsert h2");
 
@@ -193,7 +189,6 @@ mod tests {
         let data = FinalizedL1Data {
             raw_finality_update: serde_json::json!({"finality": "data"}),
             raw_light_client_update: serde_json::json!({"lc": "data"}),
-            period: 100,
         };
         repo.upsert(&h1, data).await.expect("upsert");
 
