@@ -13,6 +13,8 @@ pub struct FinalizedL1Data {
     /// This ensures consistency with the relayer's period calculation in
     /// GetSyncCommitteesFromTrustedToLatest which uses SignatureSlot.
     pub raw_light_client_update: Value,
+    /// The period of the light client update (based on signature_slot).
+    pub period: u64,
 }
 
 #[async_trait]

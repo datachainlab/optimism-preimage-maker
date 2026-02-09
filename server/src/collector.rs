@@ -309,6 +309,7 @@ where
         let finalized_l1_data = FinalizedL1Data {
             raw_finality_update: finality_value,
             raw_light_client_update: light_client_update_value,
+            period: signature_period,
         };
 
         Some((l1_head_hash, finalized_l1_data))
@@ -544,6 +545,7 @@ mod tests {
             Ok(FinalizedL1Data {
                 raw_finality_update: serde_json::json!({}),
                 raw_light_client_update: serde_json::json!({}),
+                period: 0,
             })
         }
         async fn purge_expired(&self) -> anyhow::Result<()> {

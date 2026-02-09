@@ -83,6 +83,7 @@ mod tests {
             Ok(FinalizedL1Data {
                 raw_finality_update: serde_json::json!({}),
                 raw_light_client_update: serde_json::json!({}),
+                period: 0,
             })
         }
         async fn purge_expired(&self) -> anyhow::Result<()> {

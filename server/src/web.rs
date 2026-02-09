@@ -401,6 +401,7 @@ mod tests {
         let data = FinalizedL1Data {
             raw_finality_update: serde_json::json!({"finality": "data"}),
             raw_light_client_update: serde_json::json!({"lc": "data"}),
+            period: 100,
         };
         state
             .finalized_l1_repository
