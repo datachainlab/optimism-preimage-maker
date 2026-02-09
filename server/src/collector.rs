@@ -261,11 +261,11 @@ where
         };
 
         let l1_head_hash = finality_l1.data.finalized_header.execution.block_hash;
-        let finalized_slot = finality_l1.data.finalized_header.beacon.slot;
         let signature_slot = finality_l1.data.signature_slot;
-        // Use signature_slot for period calculation to ensure consistency with relayer's
-        // GetSyncCommitteesFromTrustedToLatest which uses SignatureSlot-based period
         let signature_period = compute_period_from_slot(signature_slot);
+
+        // finalized_slot is just for logging purpose
+        let finalized_slot = finality_l1.data.finalized_header.beacon.slot;
         let finalized_period = compute_period_from_slot(finalized_slot);
 
         info!(

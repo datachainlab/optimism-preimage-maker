@@ -10,8 +10,7 @@ pub struct FinalizedL1Data {
     /// Raw JSON of the light client finality update from beacon API.
     pub raw_finality_update: Value,
     /// Raw JSON of the light client update for the signature_slot's period.
-    /// This ensures consistency with the relayer's period calculation in
-    /// GetSyncCommitteesFromTrustedToLatest which uses SignatureSlot.
+    /// This ensures consistency with the relayer's period calculation.
     pub raw_light_client_update: Value,
     /// The period of the light client update (based on signature_slot).
     pub period: u64,
