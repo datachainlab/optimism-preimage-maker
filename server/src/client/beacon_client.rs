@@ -13,10 +13,19 @@ pub struct LightClientFinalityUpdateResponse {
 pub struct LightClientFinalityUpdate {
     pub finalized_header: LightClientHeader,
     pub sync_aggregate: SyncAggregate,
+    #[serde(deserialize_with = "deserialize_u64_from_str")]
+    pub signature_slot: u64,
+}
+
+#[derive(Debug, Clone, serde::Deserialize)]
+pub struct BeaconBlockHeader {
+    #[serde(deserialize_with = "deserialize_u64_from_str")]
+    pub slot: u64,
 }
 
 #[derive(Debug, Clone, serde::Deserialize)]
 pub struct LightClientHeader {
+    pub beacon: BeaconBlockHeader,
     pub execution: ExecutionPayloadHeader,
 }
 
@@ -101,9 +110,33 @@ where
     deserializer.deserialize_any(U64StringOrNumber)
 }
 
+#[derive(Debug, Clone, serde::Deserialize)]
+pub struct LightClientUpdateResponse {
+    pub data: LightClientUpdate,
+}
+
+#[derive(Debug, Clone, serde::Deserialize)]
+pub struct LightClientUpdate {
+    pub finalized_header: LightClientHeader,
+    pub sync_aggregate: SyncAggregate,
+}
+
+#[derive(Debug, Clone, serde::Deserialize)]
+pub struct GenesisResponse {
+    pub data: GenesisData,
+}
+
+#[derive(Debug, Clone, serde::Deserialize)]
+pub struct GenesisData {
+    #[serde(deserialize_with = "deserialize_u64_from_str")]
+    pub genesis_time: u64,
+}
+
 #[async_trait]
 pub trait BeaconClient: Send + Sync + 'static {
     async fn get_raw_light_client_finality_update(&self) -> anyhow::Result<String>;
+    async fn get_raw_light_client_update(&self, period: u64) -> anyhow::Result<String>;
+    async fn get_genesis(&self) -> anyhow::Result<GenesisData>;
 }
 
 #[derive(Debug, Clone)]
@@ -152,6 +185,50 @@ impl BeaconClient for HttpBeaconClient {
             .text()
             .await
             .map_err(|e| anyhow::anyhow!("Failed to get finality update: {e:?}"))
+    }
+
+    async fn get_raw_light_client_update(&self, period: u64) -> anyhow::Result<String> {
+        let response = self
+            .client
+            .get(format!(
+                "{}/eth/v1/beacon/light_client/updates?start_period={}&count=1",
+                self.beacon_addr, period
+            ))
+            .send()
+            .await?;
+        let response = self.check_response(response).await?;
+        let text = response
+            .text()
+            .await
+            .map_err(|e| anyhow::anyhow!("Failed to get light client update: {e:?}"))?;
+
+        // The response is an array, extract the first element
+        let updates: Vec<serde_json::Value> = serde_json::from_str(&text)
+            .map_err(|e| anyhow::anyhow!("Failed to parse light client updates: {e:?}"))?;
+
+        if updates.is_empty() {
+            return Err(anyhow::anyhow!(
+                "No light client update found for period {period}"
+            ));
+        }
+
+        // Return the first update as a JSON string
+        serde_json::to_string(&updates[0])
+            .map_err(|e| anyhow::anyhow!("Failed to serialize light client update: {e:?}"))
+    }
+
+    async fn get_genesis(&self) -> anyhow::Result<GenesisData> {
+        let response = self
+            .client
+            .get(format!("{}/eth/v1/beacon/genesis", self.beacon_addr))
+            .send()
+            .await?;
+        let response = self.check_response(response).await?;
+        let genesis: GenesisResponse = response
+            .json()
+            .await
+            .map_err(|e| anyhow::anyhow!("Failed to get genesis: {e:?}"))?;
+        Ok(genesis.data)
     }
 }
 

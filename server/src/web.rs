@@ -1,4 +1,4 @@
-use crate::data::finalized_l1_repository::FinalizedL1Repository;
+use crate::data::finalized_l1_repository::{FinalizedL1Data, FinalizedL1Repository};
 use crate::data::preimage_repository::{PreimageMetadata, PreimageRepository};
 use alloy_primitives::B256;
 use anyhow::{Context, Result};
@@ -139,20 +139,20 @@ pub struct GetFinalizedL1Request {
 async fn get_finalized_l1(
     State(state): State<Arc<SharedState>>,
     Json(payload): Json<GetFinalizedL1Request>,
-) -> (StatusCode, String) {
+) -> (StatusCode, Json<Option<FinalizedL1Data>>) {
     info!("request: get_finalized_l1: {:?}", payload);
     let result = state
         .finalized_l1_repository
         .get(&payload.l1_head_hash)
         .await;
     match result {
-        Ok(v) => (StatusCode::OK, v),
+        Ok(data) => (StatusCode::OK, Json(Some(data))),
         Err(e) => {
             error!(
                 "failed to get finalized l1: {:?}, hash:{:?}",
                 e, payload.l1_head_hash
             );
-            (StatusCode::NOT_FOUND, "".to_string())
+            (StatusCode::NOT_FOUND, Json(None))
         }
     }
 }
@@ -161,6 +161,7 @@ async fn get_finalized_l1(
 mod tests {
     use super::*;
     use axum::async_trait;
+
     use std::sync::Mutex;
 
     struct MockPreimageRepository {
@@ -217,23 +218,16 @@ mod tests {
     }
 
     struct MockFinalizedL1Repository {
-        data: Arc<Mutex<std::collections::HashMap<B256, String>>>,
+        data: Arc<Mutex<std::collections::HashMap<B256, FinalizedL1Data>>>,
     }
 
     #[async_trait]
     impl FinalizedL1Repository for MockFinalizedL1Repository {
-        async fn upsert(
-            &self,
-            l1_head_hash: &B256,
-            raw_finalized_l1: String,
-        ) -> anyhow::Result<()> {
-            self.data
-                .lock()
-                .unwrap()
-                .insert(*l1_head_hash, raw_finalized_l1);
+        async fn upsert(&self, l1_head_hash: &B256, data: FinalizedL1Data) -> anyhow::Result<()> {
+            self.data.lock().unwrap().insert(*l1_head_hash, data);
             Ok(())
         }
-        async fn get(&self, l1_head_hash: &B256) -> anyhow::Result<String> {
+        async fn get(&self, l1_head_hash: &B256) -> anyhow::Result<FinalizedL1Data> {
             self.data
                 .lock()
                 .unwrap()
@@ -404,16 +398,24 @@ mod tests {
     async fn test_get_finalized_l1() {
         let state = setup_state();
         let hash = B256::repeat_byte(0x99);
+        let data = FinalizedL1Data {
+            raw_finality_update: serde_json::json!({"finality": "data"}),
+            raw_light_client_update: serde_json::json!({"lc": "data"}),
+            period: 100,
+        };
         state
             .finalized_l1_repository
-            .upsert(&hash, "data".into())
+            .upsert(&hash, data.clone())
             .await
             .unwrap();
 
         let req = GetFinalizedL1Request { l1_head_hash: hash };
-        let (status, data) = get_finalized_l1(State(state), Json(req)).await;
+        let (status, Json(result)) = get_finalized_l1(State(state), Json(req)).await;
         assert_eq!(status, StatusCode::OK);
-        assert_eq!(data, "data");
+        assert!(result.is_some());
+        let result = result.unwrap();
+        assert_eq!(result.raw_finality_update, data.raw_finality_update);
+        assert_eq!(result.raw_light_client_update, data.raw_light_client_update);
 
         let req_fail = GetFinalizedL1Request {
             l1_head_hash: B256::ZERO,

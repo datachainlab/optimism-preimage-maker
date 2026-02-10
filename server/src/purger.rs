@@ -33,9 +33,11 @@ impl<T: PreimageRepository, F: FinalizedL1Repository> PreimagePurger<T, F> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::data::finalized_l1_repository::FinalizedL1Data;
     use crate::data::preimage_repository::PreimageMetadata;
     use alloy_primitives::B256;
     use axum::async_trait;
+
     use std::sync::{Arc, Mutex};
 
     struct MockPreimageRepository {
@@ -74,15 +76,15 @@ mod tests {
     }
     #[async_trait]
     impl FinalizedL1Repository for MockFinalizedL1Repository {
-        async fn upsert(
-            &self,
-            _l1_head_hash: &B256,
-            _raw_finalized_l1: String,
-        ) -> anyhow::Result<()> {
+        async fn upsert(&self, _l1_head_hash: &B256, _data: FinalizedL1Data) -> anyhow::Result<()> {
             Ok(())
         }
-        async fn get(&self, _l1_head_hash: &B256) -> anyhow::Result<String> {
-            Ok("".to_string())
+        async fn get(&self, _l1_head_hash: &B256) -> anyhow::Result<FinalizedL1Data> {
+            Ok(FinalizedL1Data {
+                raw_finality_update: serde_json::json!({}),
+                raw_light_client_update: serde_json::json!({}),
+                period: 0,
+            })
         }
         async fn purge_expired(&self) -> anyhow::Result<()> {
             *self.purged.lock().unwrap() = true;

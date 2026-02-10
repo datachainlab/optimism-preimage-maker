@@ -1,6 +1,7 @@
 use crate::client::beacon_client::{BeaconClient, LightClientFinalityUpdateResponse};
 use crate::client::l2_client::{L2Client, SyncStatus};
-use crate::data::finalized_l1_repository::FinalizedL1Repository;
+use crate::client::period::compute_period_from_slot;
+use crate::data::finalized_l1_repository::{FinalizedL1Data, FinalizedL1Repository};
 use crate::data::preimage_repository::{PreimageMetadata, PreimageRepository};
 use crate::derivation::host::single::handler::{Derivation, DerivationConfig, DerivationRequest};
 use alloy_primitives::B256;
@@ -164,17 +165,18 @@ where
             return None;
         }
 
-        // Get latest l1 head hash for L2 derivation
-        let (l1_head_hash, raw_finality_l1) = self.get_l1_head_hash(&sync_status).await?;
+        // Get latest l1 head hash and finalized L1 data for L2 derivation
+        let (l1_head_hash, finalized_l1_data) =
+            self.get_l1_head_and_finalized_data(&sync_status).await?;
 
-        // Save finalized_l1
+        // Save finalized_l1 with light client update
         if let Err(e) = self
             .finalized_l1_repository
-            .upsert(&l1_head_hash, raw_finality_l1)
+            .upsert(&l1_head_hash, finalized_l1_data)
             .await
         {
             error!(
-                "Failed to save finalized l1 head hash to db l1_head={}, {:?}",
+                "Failed to save finalized l1 data to db l1_head={}, {:?}",
                 l1_head_hash, e
             );
         }
@@ -187,20 +189,23 @@ where
             })
     }
 
-    /// Asynchronously retrieves the latest finalized L1 block hash for use in derivation.
+    /// Asynchronously retrieves the latest finalized L1 block hash and finalized L1 data for derivation.
     ///
-    /// This function communicates with the beacon client to fetch the latest finalized L1 block data.
-    /// It ensures the returned block is up-to-date relative to the specified [`SyncStatus`].
+    /// This function communicates with the beacon client to fetch the latest finalized L1 block data
+    /// and the corresponding light client update for the period.
     ///
     /// - The function fetches the raw `finality` update from the beacon client.
     /// - It validates that the block is not outdated compared to the `sync_status`.
     /// - In case the retrieved block number is outdated, it waits for a small delay (10 seconds) and retries.
-    /// - Logs error or warning messages when issues occur, including:
-    ///   - Failure to fetch or deserialize the finality update.
-    ///   - Delayed finality L1 blocks.
-    /// - If a valid and up-to-date finalized block is found, it returns the L1 block's hash and raw response.
+    /// - Fetches the light client update for the period corresponding to the finalized slot.
+    /// - Logs error or warning messages when issues occur.
+    /// - If successful, returns the L1 block's hash and `FinalizedL1Data` containing the finality update,
+    ///   light client update, and period.
     ///
-    async fn get_l1_head_hash(&self, sync_status: &SyncStatus) -> Option<(B256, String)> {
+    async fn get_l1_head_and_finalized_data(
+        &self,
+        sync_status: &SyncStatus,
+    ) -> Option<(B256, FinalizedL1Data)> {
         let mut attempts_count = 0;
         let (finality_l1, raw_finality_l1) = loop {
             let raw_finality_l1 = match self
@@ -218,7 +223,7 @@ where
                 match serde_json::from_str(&raw_finality_l1) {
                     Ok(value) => value,
                     Err(e) => {
-                        error!("Failed to get finality update from beacon client {:?}", e);
+                        error!("Failed to parse finality update {:?}", e);
                         return None;
                     }
                 };
@@ -254,12 +259,60 @@ where
 
             break (finality_l1, raw_finality_l1);
         };
+
         let l1_head_hash = finality_l1.data.finalized_header.execution.block_hash;
+        let signature_slot = finality_l1.data.signature_slot;
+        let signature_period = compute_period_from_slot(signature_slot);
+
+        // finalized_slot is just for logging purpose
+        let finalized_slot = finality_l1.data.finalized_header.beacon.slot;
+        let finalized_period = compute_period_from_slot(finalized_slot);
+
         info!(
-            "l1_head for derivation = {:?}",
-            finality_l1.data.finalized_header.execution
+            "l1_head for derivation = {:?}, finalized_slot = {}, signature_slot = {}, signature_period = {}, finalized_period = {}",
+            finality_l1.data.finalized_header.execution, finalized_slot, signature_slot, signature_period, finalized_period
         );
-        Some((l1_head_hash, raw_finality_l1))
+
+        // Get light client update for the period
+        let raw_light_client_update = match self
+            .beacon_client
+            .get_raw_light_client_update(signature_period)
+            .await
+        {
+            Ok(update) => update,
+            Err(e) => {
+                error!(
+                    "Failed to get light client update for period {}: {:?}",
+                    signature_period, e
+                );
+                return None;
+            }
+        };
+
+        // Parse strings to serde_json::Value to avoid double-escaping when serialized
+        let finality_value: serde_json::Value = match serde_json::from_str(&raw_finality_l1) {
+            Ok(v) => v,
+            Err(e) => {
+                error!("Failed to parse finality update as JSON value: {:?}", e);
+                return None;
+            }
+        };
+        let light_client_update_value: serde_json::Value =
+            match serde_json::from_str(&raw_light_client_update) {
+                Ok(v) => v,
+                Err(e) => {
+                    error!("Failed to parse light client update as JSON value: {:?}", e);
+                    return None;
+                }
+            };
+
+        let finalized_l1_data = FinalizedL1Data {
+            raw_finality_update: finality_value,
+            raw_light_client_update: light_client_update_value,
+            period: signature_period,
+        };
+
+        Some((l1_head_hash, finalized_l1_data))
     }
 
     /// Performs parallel collection of data within a specified range, processes it using multiple
@@ -426,6 +479,12 @@ mod tests {
         async fn get_raw_light_client_finality_update(&self) -> anyhow::Result<String> {
             self.finality_update.clone().ok_or(anyhow!("error"))
         }
+        async fn get_raw_light_client_update(&self, _period: u64) -> anyhow::Result<String> {
+            Ok(r#"{"data":{}}"#.to_string())
+        }
+        async fn get_genesis(&self) -> anyhow::Result<crate::client::beacon_client::GenesisData> {
+            Ok(crate::client::beacon_client::GenesisData { genesis_time: 0 })
+        }
     }
 
     struct MockDerivationDriver {
@@ -478,16 +537,16 @@ mod tests {
 
     #[async_trait]
     impl FinalizedL1Repository for MockFinalizedL1Repository {
-        async fn upsert(
-            &self,
-            l1_head_hash: &B256,
-            _raw_finalized_l1: String,
-        ) -> anyhow::Result<()> {
+        async fn upsert(&self, l1_head_hash: &B256, _data: FinalizedL1Data) -> anyhow::Result<()> {
             self.upserted.lock().unwrap().push(*l1_head_hash);
             Ok(())
         }
-        async fn get(&self, _l1_head_hash: &B256) -> anyhow::Result<String> {
-            Ok("".into())
+        async fn get(&self, _l1_head_hash: &B256) -> anyhow::Result<FinalizedL1Data> {
+            Ok(FinalizedL1Data {
+                raw_finality_update: serde_json::json!({}),
+                raw_light_client_update: serde_json::json!({}),
+                period: 0,
+            })
         }
         async fn purge_expired(&self) -> anyhow::Result<()> {
             Ok(())
@@ -529,6 +588,9 @@ mod tests {
         let update_json = serde_json::json!({
              "data": {
                  "finalized_header": {
+                     "beacon": {
+                         "slot": "100"
+                     },
                      "execution": {
                          "block_hash": l1_head,
                          "block_number": "95"
@@ -536,7 +598,8 @@ mod tests {
                  },
                  "sync_aggregate": {
                      "sync_committee_bits": sync_committee_bits
-                 }
+                 },
+                 "signature_slot": "105"
              }
         })
         .to_string();
@@ -812,6 +875,9 @@ mod tests {
         let update_json = serde_json::json!({
              "data": {
                  "finalized_header": {
+                     "beacon": {
+                         "slot": "100"
+                     },
                      "execution": {
                          "block_hash": l1_head,
                          "block_number": "95"
@@ -819,7 +885,8 @@ mod tests {
                  },
                  "sync_aggregate": {
                      "sync_committee_bits": sync_committee_bits
-                 }
+                 },
+                 "signature_slot": "105"
              }
         })
         .to_string();
@@ -928,6 +995,9 @@ mod tests {
         let update_json = serde_json::json!({
              "data": {
                  "finalized_header": {
+                     "beacon": {
+                         "slot": "100"
+                     },
                      "execution": {
                          "block_hash": l1_head,
                          "block_number": "95"
@@ -935,7 +1005,8 @@ mod tests {
                  },
                  "sync_aggregate": {
                      "sync_committee_bits": sync_committee_bits
-                 }
+                 },
+                 "signature_slot": "105"
              }
         })
         .to_string();
