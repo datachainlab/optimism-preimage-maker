@@ -1114,4 +1114,300 @@ mod tests {
         let batch = build_batch(100, 120, 10, 3);
         assert_eq!(batch, vec![(100, 110), (110, 120)]);
     }
+
+    // Mock that returns different responses on each call for testing retry logic
+    struct MockBeaconClientWithRetry {
+        finality_updates: Arc<Mutex<Vec<String>>>,
+        light_client_updates: Arc<Mutex<Vec<String>>>,
+        call_count: Arc<Mutex<usize>>,
+    }
+
+    impl MockBeaconClientWithRetry {
+        fn new(finality_updates: Vec<String>, light_client_updates: Vec<String>) -> Self {
+            Self {
+                finality_updates: Arc::new(Mutex::new(finality_updates)),
+                light_client_updates: Arc::new(Mutex::new(light_client_updates)),
+                call_count: Arc::new(Mutex::new(0)),
+            }
+        }
+    }
+
+    #[async_trait]
+    impl BeaconClient for MockBeaconClientWithRetry {
+        async fn get_light_client_finality_update(
+            &self,
+        ) -> anyhow::Result<(LightClientFinalityUpdateResponse, serde_json::Value)> {
+            let mut count = self.call_count.lock().unwrap();
+            let updates = self.finality_updates.lock().unwrap();
+            let idx = (*count).min(updates.len() - 1);
+            let json_str = updates[idx].clone();
+            *count += 1;
+            drop(count);
+            drop(updates);
+
+            let value: serde_json::Value = serde_json::from_str(&json_str)?;
+            let parsed: LightClientFinalityUpdateResponse = serde_json::from_value(value.clone())?;
+            Ok((parsed, value))
+        }
+
+        async fn get_light_client_update(
+            &self,
+            _period: u64,
+        ) -> anyhow::Result<(LightClientUpdateResponse, serde_json::Value)> {
+            let count = self.call_count.lock().unwrap();
+            let updates = self.light_client_updates.lock().unwrap();
+            // Use count - 1 because get_light_client_finality_update is called first
+            let idx = ((*count).saturating_sub(1)).min(updates.len() - 1);
+            let json_str = updates[idx].clone();
+            drop(count);
+            drop(updates);
+
+            let value: serde_json::Value = serde_json::from_str(&json_str)?;
+            let parsed: LightClientUpdateResponse = serde_json::from_value(value.clone())?;
+            Ok((parsed, value))
+        }
+
+        async fn get_genesis(&self) -> anyhow::Result<crate::client::beacon_client::GenesisData> {
+            Ok(crate::client::beacon_client::GenesisData { genesis_time: 0 })
+        }
+    }
+
+    fn make_finality_update_json(
+        l1_head: B256,
+        slot: u64,
+        block_number: u64,
+        signature_slot: u64,
+        sync_committee_bits: &str,
+    ) -> String {
+        serde_json::json!({
+            "data": {
+                "finalized_header": {
+                    "beacon": { "slot": slot.to_string() },
+                    "execution": {
+                        "block_hash": l1_head,
+                        "block_number": block_number.to_string()
+                    }
+                },
+                "sync_aggregate": { "sync_committee_bits": sync_committee_bits },
+                "signature_slot": signature_slot.to_string()
+            }
+        })
+        .to_string()
+    }
+
+    fn make_light_client_update_json(slot: u64) -> String {
+        serde_json::json!({
+            "data": {
+                "finalized_header": {
+                    "beacon": { "slot": slot.to_string() },
+                    "execution": {
+                        "block_hash": "0x0000000000000000000000000000000000000000000000000000000000000000",
+                        "block_number": "95"
+                    }
+                },
+                "sync_aggregate": { "sync_committee_bits": "0xffffffff" }
+            }
+        })
+        .to_string()
+    }
+
+    // Helper to create a collector for retry tests
+    async fn create_collector_for_retry_test(
+        beacon_client: Arc<MockBeaconClientWithRetry>,
+        finalized_l1_number: u64,
+    ) -> PreimageCollector<
+        MockPreimageRepository,
+        MockFinalizedL1Repository,
+        MockL2Client,
+        MockBeaconClientWithRetry,
+        MockDerivationDriver,
+    > {
+        let sync_status = SyncStatus {
+            current_l1: dummy_l1(100),
+            current_l1_finalized: dummy_l1(finalized_l1_number),
+            head_l1: dummy_l1(100),
+            safe_l1: dummy_l1(95),
+            finalized_l1: dummy_l1(finalized_l1_number),
+            unsafe_l2: dummy_l2(200),
+            safe_l2: dummy_l2(190),
+            finalized_l2: dummy_l2(150),
+            pending_safe_l2: dummy_l2(190),
+        };
+
+        let mut output_roots = std::collections::HashMap::new();
+        output_roots.insert(100, dummy_output_root(100));
+        output_roots.insert(110, dummy_output_root(110));
+
+        let l2_client = Arc::new(MockL2Client {
+            sync_status: Some(sync_status),
+            output_roots,
+        });
+
+        let conf = Config::parse_from(["exe", "--initial-claimed-l2", "0"]);
+        let derivation_config = Arc::new(DerivationConfig {
+            config: conf,
+            rollup_config: None,
+            l2_chain_id: 10,
+            l1_chain_config: None,
+        });
+
+        let derivation_driver = Arc::new(MockDerivationDriver {
+            calls: Arc::new(Mutex::new(vec![])),
+        });
+
+        let mock_preimage_repo = Arc::new(MockPreimageRepository {
+            upserted: Arc::new(Mutex::new(vec![])),
+        });
+        let mock_finalized_repo = Arc::new(MockFinalizedL1Repository {
+            upserted: Arc::new(Mutex::new(vec![])),
+        });
+
+        PreimageCollector {
+            client: l2_client,
+            beacon_client,
+            derivation_driver,
+            config: derivation_config,
+            preimage_repository: mock_preimage_repo,
+            finalized_l1_repository: mock_finalized_repo,
+            distance: 10,
+            max_concurrency: 2,
+            initial_claimed: 0,
+            interval_seconds: 1,
+        }
+    }
+
+    #[tokio::test]
+    async fn test_get_l1_head_retry_on_slot_mismatch() {
+        // Test: updates_finalized_slot > finalized_slot triggers retry
+        // First call: light_client_update has slot 200, finality_update has slot 100 -> mismatch
+        // Second call: both have slot 100 -> success
+        let l1_head = B256::repeat_byte(0x11);
+        let full_participation = "0x".to_string() + &"ff".repeat(4);
+
+        let finality_updates = vec![
+            make_finality_update_json(l1_head, 100, 95, 105, &full_participation),
+            make_finality_update_json(l1_head, 100, 95, 105, &full_participation),
+        ];
+        let light_client_updates = vec![
+            make_light_client_update_json(200), // slot 200 > 100, triggers retry
+            make_light_client_update_json(100), // slot 100 <= 100, success
+        ];
+
+        let beacon_client = Arc::new(MockBeaconClientWithRetry::new(
+            finality_updates,
+            light_client_updates,
+        ));
+
+        let collector = create_collector_for_retry_test(beacon_client.clone(), 90).await;
+        let sync_status = collector.client.sync_status().await.unwrap();
+
+        let result = collector.get_l1_head_and_finalized_data(&sync_status).await;
+
+        assert!(result.is_some());
+        // Verify retry happened (call_count should be 2)
+        assert_eq!(*beacon_client.call_count.lock().unwrap(), 2);
+    }
+
+    #[tokio::test]
+    async fn test_get_l1_head_retry_on_period_mismatch() {
+        // Test: signature_period != finalized_period triggers retry
+        // Period boundary: slot 8192 is period 1, slot 8191 is period 0
+        // First call: finalized_slot in period 0, signature_slot in period 1 -> mismatch
+        // Second call: both in same period -> success
+        let l1_head = B256::repeat_byte(0x11);
+        let full_participation = "0x".to_string() + &"ff".repeat(4);
+
+        let finality_updates = vec![
+            // finalized_slot=8191 (period 0), signature_slot=8192 (period 1) -> mismatch
+            make_finality_update_json(l1_head, 8191, 95, 8192, &full_participation),
+            // finalized_slot=8192 (period 1), signature_slot=8193 (period 1) -> same period
+            make_finality_update_json(l1_head, 8192, 95, 8193, &full_participation),
+        ];
+        let light_client_updates = vec![
+            make_light_client_update_json(8191),
+            make_light_client_update_json(8192),
+        ];
+
+        let beacon_client = Arc::new(MockBeaconClientWithRetry::new(
+            finality_updates,
+            light_client_updates,
+        ));
+
+        let collector = create_collector_for_retry_test(beacon_client.clone(), 90).await;
+        let sync_status = collector.client.sync_status().await.unwrap();
+
+        let result = collector.get_l1_head_and_finalized_data(&sync_status).await;
+
+        assert!(result.is_some());
+        assert_eq!(*beacon_client.call_count.lock().unwrap(), 2);
+    }
+
+    #[tokio::test]
+    async fn test_get_l1_head_retry_on_block_number_delayed() {
+        // Test: block_number < sync_status.finalized_l1.number triggers retry
+        // First call: block_number=80, sync_status expects 90 -> delayed
+        // Second call: block_number=95 >= 90 -> success
+        let l1_head = B256::repeat_byte(0x11);
+        let full_participation = "0x".to_string() + &"ff".repeat(4);
+
+        let finality_updates = vec![
+            make_finality_update_json(l1_head, 100, 80, 105, &full_participation), // block_number=80 < 90
+            make_finality_update_json(l1_head, 100, 95, 105, &full_participation), // block_number=95 >= 90
+        ];
+        let light_client_updates = vec![
+            make_light_client_update_json(100),
+            make_light_client_update_json(100),
+        ];
+
+        let beacon_client = Arc::new(MockBeaconClientWithRetry::new(
+            finality_updates,
+            light_client_updates,
+        ));
+
+        // sync_status.finalized_l1.number = 90
+        let collector = create_collector_for_retry_test(beacon_client.clone(), 90).await;
+        let sync_status = collector.client.sync_status().await.unwrap();
+
+        let result = collector.get_l1_head_and_finalized_data(&sync_status).await;
+
+        assert!(result.is_some());
+        assert_eq!(*beacon_client.call_count.lock().unwrap(), 2);
+    }
+
+    #[tokio::test]
+    async fn test_get_l1_head_retry_on_insufficient_participation() {
+        // Test: insufficient sync committee participation triggers retry
+        // First call: only 20/32 participants (62.5% < 66.67%) -> insufficient
+        // Second call: 32/32 participants (100%) -> sufficient
+        let l1_head = B256::repeat_byte(0x11);
+        let full_participation = "0x".to_string() + &"ff".repeat(4); // 32 bits set
+        // 20 bits set: 0xfffff (20 bits) = 5 bytes of ff would be 40 bits, we need 20 bits
+        // 20 bits = 0x000fffff -> but we need hex for Bitvector<32>
+        // Actually for minimal feature (32 bits = 4 bytes):
+        // 20 bits set = 0x000fffff (but only first 20 bits set)
+        // Let's use 0x0000ffff (16 bits) which is clearly < 2/3 of 32
+        let insufficient_participation = "0x0000ffff"; // 16/32 = 50% < 66.67%
+
+        let finality_updates = vec![
+            make_finality_update_json(l1_head, 100, 95, 105, insufficient_participation),
+            make_finality_update_json(l1_head, 100, 95, 105, &full_participation),
+        ];
+        let light_client_updates = vec![
+            make_light_client_update_json(100),
+            make_light_client_update_json(100),
+        ];
+
+        let beacon_client = Arc::new(MockBeaconClientWithRetry::new(
+            finality_updates,
+            light_client_updates,
+        ));
+
+        let collector = create_collector_for_retry_test(beacon_client.clone(), 90).await;
+        let sync_status = collector.client.sync_status().await.unwrap();
+
+        let result = collector.get_l1_head_and_finalized_data(&sync_status).await;
+
+        assert!(result.is_some());
+        assert_eq!(*beacon_client.call_count.lock().unwrap(), 2);
+    }
 }
