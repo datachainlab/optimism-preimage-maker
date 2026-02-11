@@ -315,8 +315,6 @@ where
     /// 3. Collects the results asynchronously, returning an error if any task fails.
     /// 4. Once all tasks are complete, invokes the `commit_batch` method to commit the collected
     ///    results.
-    ///
-    /// ```
     async fn parallel_collect(
         &self,
         l1_head_hash: B256,
