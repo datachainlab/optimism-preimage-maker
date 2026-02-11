@@ -1,4 +1,4 @@
-use crate::client::beacon_client::{BeaconClient, LightClientFinalityUpdateResponse};
+use crate::client::beacon_client::BeaconClient;
 use crate::client::l2_client::{L2Client, SyncStatus};
 use crate::client::period::compute_period_from_slot;
 use crate::data::finalized_l1_repository::{FinalizedL1Data, FinalizedL1Repository};
@@ -9,6 +9,20 @@ use axum::async_trait;
 use std::sync::Arc;
 use tokio::time;
 use tracing::{error, info, warn};
+
+/// Threshold for switching from warn to error level logging.
+const ERROR_LOG_THRESHOLD: u32 = 70;
+
+/// Logs a message with error level if attempts >= ERROR_LOG_THRESHOLD, otherwise warn level.
+macro_rules! warn_or_error {
+    ($attempts:expr, $($arg:tt)*) => {
+        if $attempts > ERROR_LOG_THRESHOLD {
+            error!($($arg)*);
+        } else {
+            warn!($($arg)*);
+        }
+    };
+}
 
 #[async_trait]
 pub trait DerivationDriver: Send + Sync + 'static {
@@ -206,112 +220,88 @@ where
         &self,
         sync_status: &SyncStatus,
     ) -> Option<(B256, FinalizedL1Data)> {
-        let mut attempts_count = 0;
-        let (finality_l1, raw_finality_l1) = loop {
-            let raw_finality_l1 = match self
-                .beacon_client
-                .get_raw_light_client_finality_update()
-                .await
-            {
-                Ok(finality_l1) => finality_l1,
-                Err(e) => {
-                    error!("Failed to get finality update from beacon client {:?}", e);
-                    return None;
-                }
-            };
-            let finality_l1: LightClientFinalityUpdateResponse =
-                match serde_json::from_str(&raw_finality_l1) {
-                    Ok(value) => value,
+        let mut attempts_count = 0u32;
+        let (finalized_l1_data, finality_update) = loop {
+            attempts_count += 1;
+
+            // Get finalized L1 data
+            let (finalized_l1_data, finality_update, light_client_update) =
+                match self.beacon_client.get_finalized_l1_data().await {
+                    Ok(result) => result,
                     Err(e) => {
-                        error!("Failed to parse finality update {:?}", e);
+                        error!("Failed to get finalized L1 data from beacon client {:?}", e);
                         return None;
                     }
                 };
-            let block_number = finality_l1.data.finalized_header.execution.block_number;
-            if block_number < sync_status.finalized_l1.number {
-                if attempts_count > 30 {
-                    error!(
-                        "finality_l1 = {:?} delayed. attempts_count = {}",
-                        block_number, attempts_count
-                    );
-                    // It is intentional that the process doesn't exit with an error even after exceeding attempts_count,
-                    // as we would have no choice but to continue the loop anyway.
-                    // The purpose of attempts_count is to trigger error-level logs for monitoring and detection,
-                    // rather than to terminate the process.
-                } else {
-                    warn!(
-                        "finality_l1 = {:?} delayed. attempts_count = {}",
-                        block_number, attempts_count
-                    );
-                }
-                attempts_count += 1;
+
+            // Check that updates slot <= latest slot to avoid slot order reversal
+            // NOTE: This could be true only at the time of period boundary.
+            let finalized_slot = finality_update.data.finalized_header.beacon.slot;
+            let updates_finalized_slot = light_client_update.data.finalized_header.beacon.slot;
+            if updates_finalized_slot > finalized_slot {
+                warn_or_error!(
+                    attempts_count,
+                    "slot mismatch: updates.finalized_slot={} > latest.finalized_slot={}, attempts={}, retrying...",
+                    updates_finalized_slot, finalized_slot, attempts_count
+                );
                 time::sleep(time::Duration::from_secs(10)).await;
                 continue;
             }
-            if !finality_l1
+
+            // Check period mismatch between signature_slot and finalized_slot
+            // NOTE: This could be true only at the time of period boundary.
+            let finalized_period = finalized_l1_data.period;
+            let signature_slot = finality_update.data.signature_slot;
+            let signature_period = compute_period_from_slot(signature_slot);
+            if signature_period != finalized_period {
+                warn_or_error!(
+                    attempts_count,
+                    "period mismatch: signature_period={}, finalized_period={}, signature_slot={}, finalized_slot={}, attempts={}, retrying...",
+                    signature_period, finalized_period, signature_slot, finalized_slot, attempts_count
+                );
+                time::sleep(time::Duration::from_secs(10)).await;
+                continue;
+            }
+
+            // Check block_number against sync_status
+            let block_number = finality_update.data.finalized_header.execution.block_number;
+            if block_number < sync_status.finalized_l1.number {
+                warn_or_error!(
+                    attempts_count,
+                    "finality_l1 block_number={} delayed (sync_status expects {}), attempts={}, retrying...",
+                    block_number, sync_status.finalized_l1.number, attempts_count
+                );
+                time::sleep(time::Duration::from_secs(10)).await;
+                continue;
+            }
+
+            // Check sync committee participation
+            if finality_update
                 .data
                 .sync_aggregate
-                .is_sufficient_participation()
+                .is_insufficient_participation()
             {
+                warn_or_error!(
+                    attempts_count,
+                    "insufficient sync committee participation: {:?}, attempts={}, retrying...",
+                    finality_update.data.sync_aggregate,
+                    attempts_count
+                );
                 time::sleep(time::Duration::from_secs(10)).await;
                 continue;
             }
 
-            break (finality_l1, raw_finality_l1);
+            break (finalized_l1_data, finality_update);
         };
-
-        let l1_head_hash = finality_l1.data.finalized_header.execution.block_hash;
-        let signature_slot = finality_l1.data.signature_slot;
-        let signature_period = compute_period_from_slot(signature_slot);
-
-        // finalized_slot is just for logging purpose
-        let finalized_slot = finality_l1.data.finalized_header.beacon.slot;
-        let finalized_period = compute_period_from_slot(finalized_slot);
 
         info!(
-            "l1_head for derivation = {:?}, finalized_slot = {}, signature_slot = {}, signature_period = {}, finalized_period = {}",
-            finality_l1.data.finalized_header.execution, finalized_slot, signature_slot, signature_period, finalized_period
+            "l1_head for derivation = {:?}, finalized_slot = {}, finalized_period = {}",
+            finality_update.data.finalized_header.execution,
+            finality_update.data.finalized_header.beacon.slot,
+            finalized_l1_data.period
         );
 
-        // Get light client update for the period
-        let raw_light_client_update = match self
-            .beacon_client
-            .get_raw_light_client_update(signature_period)
-            .await
-        {
-            Ok(update) => update,
-            Err(e) => {
-                error!(
-                    "Failed to get light client update for period {}: {:?}",
-                    signature_period, e
-                );
-                return None;
-            }
-        };
-
-        // Parse strings to serde_json::Value to avoid double-escaping when serialized
-        let finality_value: serde_json::Value = match serde_json::from_str(&raw_finality_l1) {
-            Ok(v) => v,
-            Err(e) => {
-                error!("Failed to parse finality update as JSON value: {:?}", e);
-                return None;
-            }
-        };
-        let light_client_update_value: serde_json::Value =
-            match serde_json::from_str(&raw_light_client_update) {
-                Ok(v) => v,
-                Err(e) => {
-                    error!("Failed to parse light client update as JSON value: {:?}", e);
-                    return None;
-                }
-            };
-
-        let finalized_l1_data = FinalizedL1Data {
-            raw_finality_update: finality_value,
-            raw_light_client_update: light_client_update_value,
-            period: signature_period,
-        };
-
+        let l1_head_hash = finality_update.data.finalized_header.execution.block_hash;
         Some((l1_head_hash, finalized_l1_data))
     }
 
@@ -431,7 +421,9 @@ async fn collect<L: L2Client, D: DerivationDriver>(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::client::beacon_client::BeaconClient;
+    use crate::client::beacon_client::{
+        BeaconClient, LightClientFinalityUpdateResponse, LightClientUpdateResponse,
+    };
     use crate::client::l2_client::{Block, L2Client, OutputRootAtBlock, SyncStatus};
     use crate::derivation::host::single::config::Config;
     use crate::derivation::host::single::handler::DerivationConfig;
@@ -476,11 +468,24 @@ mod tests {
 
     #[async_trait]
     impl BeaconClient for MockBeaconClient {
-        async fn get_raw_light_client_finality_update(&self) -> anyhow::Result<String> {
-            self.finality_update.clone().ok_or(anyhow!("error"))
+        async fn get_light_client_finality_update(
+            &self,
+        ) -> anyhow::Result<(LightClientFinalityUpdateResponse, serde_json::Value)> {
+            let json_str = self.finality_update.clone().ok_or(anyhow!("error"))?;
+            let value: serde_json::Value = serde_json::from_str(&json_str)?;
+            let parsed: LightClientFinalityUpdateResponse = serde_json::from_value(value.clone())?;
+            Ok((parsed, value))
         }
-        async fn get_raw_light_client_update(&self, _period: u64) -> anyhow::Result<String> {
-            Ok(r#"{"data":{}}"#.to_string())
+        async fn get_light_client_update(
+            &self,
+            _period: u64,
+        ) -> anyhow::Result<(LightClientUpdateResponse, serde_json::Value)> {
+            // Return a valid light client update response
+            // finalized_slot should be <= finality_update's finalized_slot
+            let json_str = r#"{"data":{"finalized_header":{"beacon":{"slot":"100"},"execution":{"block_hash":"0x0000000000000000000000000000000000000000000000000000000000000000","block_number":"95"}},"sync_aggregate":{"sync_committee_bits":"0xffffffff"}}}"#;
+            let value: serde_json::Value = serde_json::from_str(json_str)?;
+            let parsed: LightClientUpdateResponse = serde_json::from_value(value.clone())?;
+            Ok((parsed, value))
         }
         async fn get_genesis(&self) -> anyhow::Result<crate::client::beacon_client::GenesisData> {
             Ok(crate::client::beacon_client::GenesisData { genesis_time: 0 })
