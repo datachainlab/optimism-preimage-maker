@@ -1380,7 +1380,8 @@ mod tests {
         // First call: only 20/32 participants (62.5% < 66.67%) -> insufficient
         // Second call: 32/32 participants (100%) -> sufficient
         let l1_head = B256::repeat_byte(0x11);
-        let full_participation = "0x".to_string() + &"ff".repeat(4); // 32 bits set
+        // 32 bits set
+        let full_participation = "0x".to_string() + &"ff".repeat(4);
         // 20 bits set: 0xfffff (20 bits) = 5 bytes of ff would be 40 bits, we need 20 bits
         // 20 bits = 0x000fffff -> but we need hex for Bitvector<32>
         // Actually for minimal feature (32 bits = 4 bytes):
