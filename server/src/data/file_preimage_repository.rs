@@ -255,7 +255,7 @@ mod tests {
         let got2 = repo.get(&m2).await.expect("get m2");
         assert_eq!(got2, p2);
 
-        // list should be sorted by agreed ascending
+        // list should be sorted by claimed ascending
         let list = repo.list_metadata(None, None).await;
         assert_eq!(list, vec![m1.clone(), m2.clone()]);
 
@@ -289,11 +289,11 @@ mod tests {
         assert_eq!(filtered, vec![m_c.clone(), m_a.clone()]);
 
         // filter by claimed < x
-        let filtered = repo.list_metadata(Some(4), None).await; // claimed < 2 => m_c(2)
+        let filtered = repo.list_metadata(Some(4), None).await; // claimed < 4 => m_b(2)
         assert_eq!(filtered, vec![m_b.clone()]);
 
         // filter by gt < claimed < lt
-        let filtered = repo.list_metadata(Some(7), Some(4)).await; // 4 < claimed < 7 => m_c(6)
+        let filtered = repo.list_metadata(Some(7), Some(4)).await; // 4 < claimed < 7 => m_a(6)
         assert_eq!(filtered, vec![m_a.clone()]);
 
         tokio::fs::remove_dir_all(dir).await.ok();

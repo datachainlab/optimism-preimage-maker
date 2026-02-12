@@ -40,7 +40,8 @@ pub const fn compute_period_from_slot(slot: u64) -> u64 {
 }
 
 /// Computes the slot from a timestamp and genesis time.
-/// Returns None if the timestamp is before genesis or not aligned to slot boundaries.
+/// Returns None if the timestamp is before genesis.
+/// Non-aligned timestamps are accepted and rounded down to the nearest slot.
 pub fn compute_slot_at_timestamp(timestamp: u64, genesis_time: u64) -> Option<u64> {
     if timestamp < genesis_time {
         return None;

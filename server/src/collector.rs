@@ -1,4 +1,4 @@
-use crate::client::beacon_client::{BeaconClient, LightClientFinalityUpdateResponse};
+use crate::client::beacon_client::BeaconClient;
 use crate::client::l2_client::{L2Client, SyncStatus};
 use crate::client::period::compute_period_from_slot;
 use crate::data::finalized_l1_repository::{FinalizedL1Data, FinalizedL1Repository};
@@ -9,6 +9,20 @@ use axum::async_trait;
 use std::sync::Arc;
 use tokio::time;
 use tracing::{error, info, warn};
+
+/// Threshold for switching from warn to error level logging.
+const ERROR_LOG_THRESHOLD: u32 = 70;
+
+/// Logs a message with error level if attempts >= ERROR_LOG_THRESHOLD, otherwise warn level.
+macro_rules! warn_or_error {
+    ($attempts:expr, $($arg:tt)*) => {
+        if $attempts > ERROR_LOG_THRESHOLD {
+            error!($($arg)*);
+        } else {
+            warn!($($arg)*);
+        }
+    };
+}
 
 #[async_trait]
 pub trait DerivationDriver: Send + Sync + 'static {
@@ -206,112 +220,88 @@ where
         &self,
         sync_status: &SyncStatus,
     ) -> Option<(B256, FinalizedL1Data)> {
-        let mut attempts_count = 0;
-        let (finality_l1, raw_finality_l1) = loop {
-            let raw_finality_l1 = match self
-                .beacon_client
-                .get_raw_light_client_finality_update()
-                .await
-            {
-                Ok(finality_l1) => finality_l1,
-                Err(e) => {
-                    error!("Failed to get finality update from beacon client {:?}", e);
-                    return None;
-                }
-            };
-            let finality_l1: LightClientFinalityUpdateResponse =
-                match serde_json::from_str(&raw_finality_l1) {
-                    Ok(value) => value,
+        let mut attempts_count = 0u32;
+        let (finalized_l1_data, finality_update) = loop {
+            attempts_count += 1;
+
+            // Get finalized L1 data
+            let (finalized_l1_data, finality_update, light_client_update) =
+                match self.beacon_client.get_finalized_l1_data().await {
+                    Ok(result) => result,
                     Err(e) => {
-                        error!("Failed to parse finality update {:?}", e);
+                        error!("Failed to get finalized L1 data from beacon client {:?}", e);
                         return None;
                     }
                 };
-            let block_number = finality_l1.data.finalized_header.execution.block_number;
-            if block_number < sync_status.finalized_l1.number {
-                if attempts_count > 30 {
-                    error!(
-                        "finality_l1 = {:?} delayed. attempts_count = {}",
-                        block_number, attempts_count
-                    );
-                    // It is intentional that the process doesn't exit with an error even after exceeding attempts_count,
-                    // as we would have no choice but to continue the loop anyway.
-                    // The purpose of attempts_count is to trigger error-level logs for monitoring and detection,
-                    // rather than to terminate the process.
-                } else {
-                    warn!(
-                        "finality_l1 = {:?} delayed. attempts_count = {}",
-                        block_number, attempts_count
-                    );
-                }
-                attempts_count += 1;
+
+            // Check that updates slot <= latest slot to avoid slot order reversal
+            // NOTE: This could be true only at the time of period boundary.
+            let finalized_slot = finality_update.data.finalized_header.beacon.slot;
+            let updates_finalized_slot = light_client_update.data.finalized_header.beacon.slot;
+            if updates_finalized_slot > finalized_slot {
+                warn_or_error!(
+                    attempts_count,
+                    "slot mismatch: updates.finalized_slot={} > latest.finalized_slot={}, attempts={}, retrying...",
+                    updates_finalized_slot, finalized_slot, attempts_count
+                );
                 time::sleep(time::Duration::from_secs(10)).await;
                 continue;
             }
-            if !finality_l1
+
+            // Check period mismatch between signature_slot and finalized_slot
+            // NOTE: This could be true only at the time of period boundary.
+            let finalized_period = finalized_l1_data.period;
+            let signature_slot = finality_update.data.signature_slot;
+            let signature_period = compute_period_from_slot(signature_slot);
+            if signature_period != finalized_period {
+                warn_or_error!(
+                    attempts_count,
+                    "period mismatch: signature_period={}, finalized_period={}, signature_slot={}, finalized_slot={}, attempts={}, retrying...",
+                    signature_period, finalized_period, signature_slot, finalized_slot, attempts_count
+                );
+                time::sleep(time::Duration::from_secs(10)).await;
+                continue;
+            }
+
+            // Check block_number against sync_status
+            let block_number = finality_update.data.finalized_header.execution.block_number;
+            if block_number < sync_status.finalized_l1.number {
+                warn_or_error!(
+                    attempts_count,
+                    "finality_l1 block_number={} delayed (sync_status expects {}), attempts={}, retrying...",
+                    block_number, sync_status.finalized_l1.number, attempts_count
+                );
+                time::sleep(time::Duration::from_secs(10)).await;
+                continue;
+            }
+
+            // Check sync committee participation
+            if finality_update
                 .data
                 .sync_aggregate
-                .is_sufficient_participation()
+                .is_insufficient_participation()
             {
+                warn_or_error!(
+                    attempts_count,
+                    "insufficient sync committee participation: {:?}, attempts={}, retrying...",
+                    finality_update.data.sync_aggregate,
+                    attempts_count
+                );
                 time::sleep(time::Duration::from_secs(10)).await;
                 continue;
             }
 
-            break (finality_l1, raw_finality_l1);
+            break (finalized_l1_data, finality_update);
         };
-
-        let l1_head_hash = finality_l1.data.finalized_header.execution.block_hash;
-        let signature_slot = finality_l1.data.signature_slot;
-        let signature_period = compute_period_from_slot(signature_slot);
-
-        // finalized_slot is just for logging purpose
-        let finalized_slot = finality_l1.data.finalized_header.beacon.slot;
-        let finalized_period = compute_period_from_slot(finalized_slot);
 
         info!(
-            "l1_head for derivation = {:?}, finalized_slot = {}, signature_slot = {}, signature_period = {}, finalized_period = {}",
-            finality_l1.data.finalized_header.execution, finalized_slot, signature_slot, signature_period, finalized_period
+            "l1_head for derivation = {:?}, finalized_slot = {}, finalized_period = {}",
+            finality_update.data.finalized_header.execution,
+            finality_update.data.finalized_header.beacon.slot,
+            finalized_l1_data.period
         );
 
-        // Get light client update for the period
-        let raw_light_client_update = match self
-            .beacon_client
-            .get_raw_light_client_update(signature_period)
-            .await
-        {
-            Ok(update) => update,
-            Err(e) => {
-                error!(
-                    "Failed to get light client update for period {}: {:?}",
-                    signature_period, e
-                );
-                return None;
-            }
-        };
-
-        // Parse strings to serde_json::Value to avoid double-escaping when serialized
-        let finality_value: serde_json::Value = match serde_json::from_str(&raw_finality_l1) {
-            Ok(v) => v,
-            Err(e) => {
-                error!("Failed to parse finality update as JSON value: {:?}", e);
-                return None;
-            }
-        };
-        let light_client_update_value: serde_json::Value =
-            match serde_json::from_str(&raw_light_client_update) {
-                Ok(v) => v,
-                Err(e) => {
-                    error!("Failed to parse light client update as JSON value: {:?}", e);
-                    return None;
-                }
-            };
-
-        let finalized_l1_data = FinalizedL1Data {
-            raw_finality_update: finality_value,
-            raw_light_client_update: light_client_update_value,
-            period: signature_period,
-        };
-
+        let l1_head_hash = finality_update.data.finalized_header.execution.block_hash;
         Some((l1_head_hash, finalized_l1_data))
     }
 
@@ -325,8 +315,6 @@ where
     /// 3. Collects the results asynchronously, returning an error if any task fails.
     /// 4. Once all tasks are complete, invokes the `commit_batch` method to commit the collected
     ///    results.
-    ///
-    /// ```
     async fn parallel_collect(
         &self,
         l1_head_hash: B256,
@@ -431,7 +419,9 @@ async fn collect<L: L2Client, D: DerivationDriver>(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::client::beacon_client::BeaconClient;
+    use crate::client::beacon_client::{
+        BeaconClient, LightClientFinalityUpdateResponse, LightClientUpdateResponse,
+    };
     use crate::client::l2_client::{Block, L2Client, OutputRootAtBlock, SyncStatus};
     use crate::derivation::host::single::config::Config;
     use crate::derivation::host::single::handler::DerivationConfig;
@@ -476,11 +466,24 @@ mod tests {
 
     #[async_trait]
     impl BeaconClient for MockBeaconClient {
-        async fn get_raw_light_client_finality_update(&self) -> anyhow::Result<String> {
-            self.finality_update.clone().ok_or(anyhow!("error"))
+        async fn get_light_client_finality_update(
+            &self,
+        ) -> anyhow::Result<(LightClientFinalityUpdateResponse, serde_json::Value)> {
+            let json_str = self.finality_update.clone().ok_or(anyhow!("error"))?;
+            let value: serde_json::Value = serde_json::from_str(&json_str)?;
+            let parsed: LightClientFinalityUpdateResponse = serde_json::from_value(value.clone())?;
+            Ok((parsed, value))
         }
-        async fn get_raw_light_client_update(&self, _period: u64) -> anyhow::Result<String> {
-            Ok(r#"{"data":{}}"#.to_string())
+        async fn get_light_client_update(
+            &self,
+            _period: u64,
+        ) -> anyhow::Result<(LightClientUpdateResponse, serde_json::Value)> {
+            // Return a valid light client update response
+            // finalized_slot should be <= finality_update's finalized_slot
+            let json_str = r#"{"data":{"finalized_header":{"beacon":{"slot":"100"},"execution":{"block_hash":"0x0000000000000000000000000000000000000000000000000000000000000000","block_number":"95"}},"sync_aggregate":{"sync_committee_bits":"0xffffffff"}}}"#;
+            let value: serde_json::Value = serde_json::from_str(json_str)?;
+            let parsed: LightClientUpdateResponse = serde_json::from_value(value.clone())?;
+            Ok((parsed, value))
         }
         async fn get_genesis(&self) -> anyhow::Result<crate::client::beacon_client::GenesisData> {
             Ok(crate::client::beacon_client::GenesisData { genesis_time: 0 })
@@ -1108,5 +1111,302 @@ mod tests {
         // Expected: [(100,110), (110,120)] (110+10=120 == 120, so included)
         let batch = build_batch(100, 120, 10, 3);
         assert_eq!(batch, vec![(100, 110), (110, 120)]);
+    }
+
+    // Mock that returns different responses on each call for testing retry logic
+    struct MockBeaconClientWithRetry {
+        finality_updates: Arc<Mutex<Vec<String>>>,
+        light_client_updates: Arc<Mutex<Vec<String>>>,
+        call_count: Arc<Mutex<usize>>,
+    }
+
+    impl MockBeaconClientWithRetry {
+        fn new(finality_updates: Vec<String>, light_client_updates: Vec<String>) -> Self {
+            Self {
+                finality_updates: Arc::new(Mutex::new(finality_updates)),
+                light_client_updates: Arc::new(Mutex::new(light_client_updates)),
+                call_count: Arc::new(Mutex::new(0)),
+            }
+        }
+    }
+
+    #[async_trait]
+    impl BeaconClient for MockBeaconClientWithRetry {
+        async fn get_light_client_finality_update(
+            &self,
+        ) -> anyhow::Result<(LightClientFinalityUpdateResponse, serde_json::Value)> {
+            let mut count = self.call_count.lock().unwrap();
+            let updates = self.finality_updates.lock().unwrap();
+            let idx = (*count).min(updates.len() - 1);
+            let json_str = updates[idx].clone();
+            *count += 1;
+            drop(count);
+            drop(updates);
+
+            let value: serde_json::Value = serde_json::from_str(&json_str)?;
+            let parsed: LightClientFinalityUpdateResponse = serde_json::from_value(value.clone())?;
+            Ok((parsed, value))
+        }
+
+        async fn get_light_client_update(
+            &self,
+            _period: u64,
+        ) -> anyhow::Result<(LightClientUpdateResponse, serde_json::Value)> {
+            let count = self.call_count.lock().unwrap();
+            let updates = self.light_client_updates.lock().unwrap();
+            // Use count - 1 because get_light_client_finality_update is called first
+            let idx = ((*count).saturating_sub(1)).min(updates.len() - 1);
+            let json_str = updates[idx].clone();
+            drop(count);
+            drop(updates);
+
+            let value: serde_json::Value = serde_json::from_str(&json_str)?;
+            let parsed: LightClientUpdateResponse = serde_json::from_value(value.clone())?;
+            Ok((parsed, value))
+        }
+
+        async fn get_genesis(&self) -> anyhow::Result<crate::client::beacon_client::GenesisData> {
+            Ok(crate::client::beacon_client::GenesisData { genesis_time: 0 })
+        }
+    }
+
+    fn make_finality_update_json(
+        l1_head: B256,
+        slot: u64,
+        block_number: u64,
+        signature_slot: u64,
+        sync_committee_bits: &str,
+    ) -> String {
+        serde_json::json!({
+            "data": {
+                "finalized_header": {
+                    "beacon": { "slot": slot.to_string() },
+                    "execution": {
+                        "block_hash": l1_head,
+                        "block_number": block_number.to_string()
+                    }
+                },
+                "sync_aggregate": { "sync_committee_bits": sync_committee_bits },
+                "signature_slot": signature_slot.to_string()
+            }
+        })
+        .to_string()
+    }
+
+    fn make_light_client_update_json(slot: u64) -> String {
+        serde_json::json!({
+            "data": {
+                "finalized_header": {
+                    "beacon": { "slot": slot.to_string() },
+                    "execution": {
+                        "block_hash": "0x0000000000000000000000000000000000000000000000000000000000000000",
+                        "block_number": "95"
+                    }
+                },
+                "sync_aggregate": { "sync_committee_bits": "0xffffffff" }
+            }
+        })
+        .to_string()
+    }
+
+    // Helper to create a collector for retry tests
+    async fn create_collector_for_retry_test(
+        beacon_client: Arc<MockBeaconClientWithRetry>,
+        finalized_l1_number: u64,
+    ) -> PreimageCollector<
+        MockPreimageRepository,
+        MockFinalizedL1Repository,
+        MockL2Client,
+        MockBeaconClientWithRetry,
+        MockDerivationDriver,
+    > {
+        let sync_status = SyncStatus {
+            current_l1: dummy_l1(100),
+            current_l1_finalized: dummy_l1(finalized_l1_number),
+            head_l1: dummy_l1(100),
+            safe_l1: dummy_l1(95),
+            finalized_l1: dummy_l1(finalized_l1_number),
+            unsafe_l2: dummy_l2(200),
+            safe_l2: dummy_l2(190),
+            finalized_l2: dummy_l2(150),
+            pending_safe_l2: dummy_l2(190),
+        };
+
+        let mut output_roots = std::collections::HashMap::new();
+        output_roots.insert(100, dummy_output_root(100));
+        output_roots.insert(110, dummy_output_root(110));
+
+        let l2_client = Arc::new(MockL2Client {
+            sync_status: Some(sync_status),
+            output_roots,
+        });
+
+        let conf = Config::parse_from(["exe", "--initial-claimed-l2", "0"]);
+        let derivation_config = Arc::new(DerivationConfig {
+            config: conf,
+            rollup_config: None,
+            l2_chain_id: 10,
+            l1_chain_config: None,
+        });
+
+        let derivation_driver = Arc::new(MockDerivationDriver {
+            calls: Arc::new(Mutex::new(vec![])),
+        });
+
+        let mock_preimage_repo = Arc::new(MockPreimageRepository {
+            upserted: Arc::new(Mutex::new(vec![])),
+        });
+        let mock_finalized_repo = Arc::new(MockFinalizedL1Repository {
+            upserted: Arc::new(Mutex::new(vec![])),
+        });
+
+        PreimageCollector {
+            client: l2_client,
+            beacon_client,
+            derivation_driver,
+            config: derivation_config,
+            preimage_repository: mock_preimage_repo,
+            finalized_l1_repository: mock_finalized_repo,
+            distance: 10,
+            max_concurrency: 2,
+            initial_claimed: 0,
+            interval_seconds: 1,
+        }
+    }
+
+    #[tokio::test]
+    async fn test_get_l1_head_retry_on_slot_mismatch() {
+        // Test: updates_finalized_slot > finalized_slot triggers retry
+        // First call: light_client_update has slot 200, finality_update has slot 100 -> mismatch
+        // Second call: both have slot 100 -> success
+        let l1_head = B256::repeat_byte(0x11);
+        let full_participation = "0x".to_string() + &"ff".repeat(4);
+
+        let finality_updates = vec![
+            make_finality_update_json(l1_head, 100, 95, 105, &full_participation),
+            make_finality_update_json(l1_head, 100, 95, 105, &full_participation),
+        ];
+        let light_client_updates = vec![
+            make_light_client_update_json(200), // slot 200 > 100, triggers retry
+            make_light_client_update_json(100), // slot 100 <= 100, success
+        ];
+
+        let beacon_client = Arc::new(MockBeaconClientWithRetry::new(
+            finality_updates,
+            light_client_updates,
+        ));
+
+        let collector = create_collector_for_retry_test(beacon_client.clone(), 90).await;
+        let sync_status = collector.client.sync_status().await.unwrap();
+
+        let result = collector.get_l1_head_and_finalized_data(&sync_status).await;
+
+        assert!(result.is_some());
+        // Verify retry happened (call_count should be 2)
+        assert_eq!(*beacon_client.call_count.lock().unwrap(), 2);
+    }
+
+    #[tokio::test]
+    async fn test_get_l1_head_retry_on_period_mismatch() {
+        // Test: signature_period != finalized_period triggers retry
+        // Period boundary: slot 8192 is period 1, slot 8191 is period 0
+        // First call: finalized_slot in period 0, signature_slot in period 1 -> mismatch
+        // Second call: both in same period -> success
+        let l1_head = B256::repeat_byte(0x11);
+        let full_participation = "0x".to_string() + &"ff".repeat(4);
+
+        let finality_updates = vec![
+            // finalized_slot=8191 (period 0), signature_slot=8192 (period 1) -> mismatch
+            make_finality_update_json(l1_head, 8191, 95, 8192, &full_participation),
+            // finalized_slot=8192 (period 1), signature_slot=8193 (period 1) -> same period
+            make_finality_update_json(l1_head, 8192, 95, 8193, &full_participation),
+        ];
+        let light_client_updates = vec![
+            make_light_client_update_json(8191),
+            make_light_client_update_json(8192),
+        ];
+
+        let beacon_client = Arc::new(MockBeaconClientWithRetry::new(
+            finality_updates,
+            light_client_updates,
+        ));
+
+        let collector = create_collector_for_retry_test(beacon_client.clone(), 90).await;
+        let sync_status = collector.client.sync_status().await.unwrap();
+
+        let result = collector.get_l1_head_and_finalized_data(&sync_status).await;
+
+        assert!(result.is_some());
+        assert_eq!(*beacon_client.call_count.lock().unwrap(), 2);
+    }
+
+    #[tokio::test]
+    async fn test_get_l1_head_retry_on_block_number_delayed() {
+        // Test: block_number < sync_status.finalized_l1.number triggers retry
+        // First call: block_number=80, sync_status expects 90 -> delayed
+        // Second call: block_number=95 >= 90 -> success
+        let l1_head = B256::repeat_byte(0x11);
+        let full_participation = "0x".to_string() + &"ff".repeat(4);
+
+        let finality_updates = vec![
+            make_finality_update_json(l1_head, 100, 80, 105, &full_participation), // block_number=80 < 90
+            make_finality_update_json(l1_head, 100, 95, 105, &full_participation), // block_number=95 >= 90
+        ];
+        let light_client_updates = vec![
+            make_light_client_update_json(100),
+            make_light_client_update_json(100),
+        ];
+
+        let beacon_client = Arc::new(MockBeaconClientWithRetry::new(
+            finality_updates,
+            light_client_updates,
+        ));
+
+        // sync_status.finalized_l1.number = 90
+        let collector = create_collector_for_retry_test(beacon_client.clone(), 90).await;
+        let sync_status = collector.client.sync_status().await.unwrap();
+
+        let result = collector.get_l1_head_and_finalized_data(&sync_status).await;
+
+        assert!(result.is_some());
+        assert_eq!(*beacon_client.call_count.lock().unwrap(), 2);
+    }
+
+    #[tokio::test]
+    async fn test_get_l1_head_retry_on_insufficient_participation() {
+        // Test: insufficient sync committee participation triggers retry
+        // First call: only 20/32 participants (62.5% < 66.67%) -> insufficient
+        // Second call: 32/32 participants (100%) -> sufficient
+        let l1_head = B256::repeat_byte(0x11);
+        // 32 bits set
+        let full_participation = "0x".to_string() + &"ff".repeat(4);
+        // 20 bits set: 0xfffff (20 bits) = 5 bytes of ff would be 40 bits, we need 20 bits
+        // 20 bits = 0x000fffff -> but we need hex for Bitvector<32>
+        // Actually for minimal feature (32 bits = 4 bytes):
+        // 20 bits set = 0x000fffff (but only first 20 bits set)
+        // Let's use 0x0000ffff (16 bits) which is clearly < 2/3 of 32
+        let insufficient_participation = "0x0000ffff"; // 16/32 = 50% < 66.67%
+
+        let finality_updates = vec![
+            make_finality_update_json(l1_head, 100, 95, 105, insufficient_participation),
+            make_finality_update_json(l1_head, 100, 95, 105, &full_participation),
+        ];
+        let light_client_updates = vec![
+            make_light_client_update_json(100),
+            make_light_client_update_json(100),
+        ];
+
+        let beacon_client = Arc::new(MockBeaconClientWithRetry::new(
+            finality_updates,
+            light_client_updates,
+        ));
+
+        let collector = create_collector_for_retry_test(beacon_client.clone(), 90).await;
+        let sync_status = collector.client.sync_status().await.unwrap();
+
+        let result = collector.get_l1_head_and_finalized_data(&sync_status).await;
+
+        assert!(result.is_some());
+        assert_eq!(*beacon_client.call_count.lock().unwrap(), 2);
     }
 }

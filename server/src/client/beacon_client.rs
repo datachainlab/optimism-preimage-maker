@@ -1,8 +1,9 @@
+use crate::client::period::compute_period_from_slot;
+use crate::data::finalized_l1_repository::FinalizedL1Data;
 use alloy_primitives::B256;
 use axum::async_trait;
 use reqwest::Response;
 use ssz_rs::Bitvector;
-use tracing::warn;
 
 #[derive(Debug, Clone, serde::Deserialize)]
 pub struct LightClientFinalityUpdateResponse {
@@ -36,7 +37,7 @@ pub struct ExecutionPayloadHeader {
     pub block_number: u64,
 }
 
-#[derive(Debug, Clone, serde::Deserialize)]
+#[derive(Clone, serde::Deserialize)]
 pub struct SyncAggregate {
     #[cfg(feature = "minimal")]
     pub sync_committee_bits: Bitvector<32>,
@@ -44,22 +45,22 @@ pub struct SyncAggregate {
     pub sync_committee_bits: Bitvector<512>,
 }
 
+impl std::fmt::Debug for SyncAggregate {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("SyncAggregate")
+            .field("participants", &self.sync_committee_bits.count_ones())
+            .field("validators", &self.sync_committee_bits.len())
+            .finish()
+    }
+}
+
 impl SyncAggregate {
-    pub fn is_sufficient_participation(&self) -> bool {
+    pub fn is_insufficient_participation(&self) -> bool {
         let participants = self.sync_committee_bits.count_ones() as u64;
         let validators = self.sync_committee_bits.len() as u64;
         const TRUST_LEVEL_NUMERATOR: u64 = 2;
         const TRUST_LEVEL_DENOMINATOR: u64 = 3;
-        let insufficient =
-            participants * TRUST_LEVEL_DENOMINATOR < validators * TRUST_LEVEL_NUMERATOR;
-        if insufficient {
-            warn!(
-                "Insufficient sync committee participation rate: participants={} validators={}",
-                participants, validators
-            );
-            return false;
-        }
-        true
+        participants * TRUST_LEVEL_DENOMINATOR < validators * TRUST_LEVEL_NUMERATOR
     }
 }
 
@@ -134,9 +135,44 @@ pub struct GenesisData {
 
 #[async_trait]
 pub trait BeaconClient: Send + Sync + 'static {
-    async fn get_raw_light_client_finality_update(&self) -> anyhow::Result<String>;
-    async fn get_raw_light_client_update(&self, period: u64) -> anyhow::Result<String>;
+    /// Returns parsed finality update and raw JSON value for storage.
+    async fn get_light_client_finality_update(
+        &self,
+    ) -> anyhow::Result<(LightClientFinalityUpdateResponse, serde_json::Value)>;
+
+    /// Returns parsed light client update and raw JSON value for storage.
+    async fn get_light_client_update(
+        &self,
+        period: u64,
+    ) -> anyhow::Result<(LightClientUpdateResponse, serde_json::Value)>;
+
     async fn get_genesis(&self) -> anyhow::Result<GenesisData>;
+
+    /// Fetches finality update and light client update, returning FinalizedL1Data along with parsed responses.
+    /// Calls get_light_client_finality_update and get_light_client_update internally to minimize lag between API calls.
+    async fn get_finalized_l1_data(
+        &self,
+    ) -> anyhow::Result<(
+        FinalizedL1Data,
+        LightClientFinalityUpdateResponse,
+        LightClientUpdateResponse,
+    )> {
+        let (finality_update, finality_value) = self.get_light_client_finality_update().await?;
+
+        let finalized_slot = finality_update.data.finalized_header.beacon.slot;
+        let finalized_period = compute_period_from_slot(finalized_slot);
+
+        let (light_client_update, light_client_update_value) =
+            self.get_light_client_update(finalized_period).await?;
+
+        let finalized_l1_data = FinalizedL1Data {
+            raw_finality_update: finality_value,
+            raw_light_client_update: light_client_update_value,
+            period: finalized_period,
+        };
+
+        Ok((finalized_l1_data, finality_update, light_client_update))
+    }
 }
 
 #[derive(Debug, Clone)]
@@ -171,7 +207,9 @@ impl HttpBeaconClient {
 
 #[async_trait]
 impl BeaconClient for HttpBeaconClient {
-    async fn get_raw_light_client_finality_update(&self) -> anyhow::Result<String> {
+    async fn get_light_client_finality_update(
+        &self,
+    ) -> anyhow::Result<(LightClientFinalityUpdateResponse, serde_json::Value)> {
         let response = self
             .client
             .get(format!(
@@ -181,13 +219,24 @@ impl BeaconClient for HttpBeaconClient {
             .send()
             .await?;
         let response = self.check_response(response).await?;
-        response
+        let text = response
             .text()
             .await
-            .map_err(|e| anyhow::anyhow!("Failed to get finality update: {e:?}"))
+            .map_err(|e| anyhow::anyhow!("Failed to get finality update: {e:?}"))?;
+
+        let raw_value: serde_json::Value = serde_json::from_str(&text)
+            .map_err(|e| anyhow::anyhow!("Failed to parse finality update as JSON: {e:?}"))?;
+        let parsed: LightClientFinalityUpdateResponse =
+            serde_json::from_value(raw_value.clone())
+                .map_err(|e| anyhow::anyhow!("Failed to parse finality update: {e:?}"))?;
+
+        Ok((parsed, raw_value))
     }
 
-    async fn get_raw_light_client_update(&self, period: u64) -> anyhow::Result<String> {
+    async fn get_light_client_update(
+        &self,
+        period: u64,
+    ) -> anyhow::Result<(LightClientUpdateResponse, serde_json::Value)> {
         let response = self
             .client
             .get(format!(
@@ -212,9 +261,11 @@ impl BeaconClient for HttpBeaconClient {
             ));
         }
 
-        // Return the first update as a JSON string
-        serde_json::to_string(&updates[0])
-            .map_err(|e| anyhow::anyhow!("Failed to serialize light client update: {e:?}"))
+        let raw_value = updates.into_iter().next().unwrap();
+        let parsed: LightClientUpdateResponse = serde_json::from_value(raw_value.clone())
+            .map_err(|e| anyhow::anyhow!("Failed to parse light client update: {e:?}"))?;
+
+        Ok((parsed, raw_value))
     }
 
     async fn get_genesis(&self) -> anyhow::Result<GenesisData> {
@@ -252,63 +303,63 @@ mod tests {
     }
 
     #[test]
-    fn test_is_sufficient_participation_all_participants() {
-        // 100% participation should be sufficient
+    fn test_is_insufficient_participation_all_participants() {
+        // 100% participation should NOT be insufficient
         #[cfg(feature = "minimal")]
         let agg = create_sync_aggregate_with_participation(32);
         #[cfg(not(feature = "minimal"))]
         let agg = create_sync_aggregate_with_participation(512);
 
-        assert!(agg.is_sufficient_participation());
+        assert!(!agg.is_insufficient_participation());
     }
 
     #[test]
-    fn test_is_sufficient_participation_two_thirds() {
-        // Exactly 2/3 participation should be sufficient (participants >= validators * 2/3)
+    fn test_is_insufficient_participation_two_thirds() {
+        // Exactly 2/3 participation should NOT be insufficient (participants >= validators * 2/3)
         #[cfg(feature = "minimal")]
         let agg = create_sync_aggregate_with_participation(22); // 22/32 = 68.75% >= 66.67%
         #[cfg(not(feature = "minimal"))]
         let agg = create_sync_aggregate_with_participation(342); // 342/512 = 66.80% >= 66.67%
 
-        assert!(agg.is_sufficient_participation());
+        assert!(!agg.is_insufficient_participation());
     }
 
     #[test]
-    fn test_is_sufficient_participation_below_threshold() {
+    fn test_is_insufficient_participation_below_threshold() {
         // Less than 2/3 participation should be insufficient
         #[cfg(feature = "minimal")]
         let agg = create_sync_aggregate_with_participation(20); // 20/32 = 62.5% < 66.67%
         #[cfg(not(feature = "minimal"))]
         let agg = create_sync_aggregate_with_participation(340); // 340/512 = 66.41% < 66.67%
 
-        assert!(!agg.is_sufficient_participation());
+        assert!(agg.is_insufficient_participation());
     }
 
     #[test]
-    fn test_is_sufficient_participation_no_participants() {
+    fn test_is_insufficient_participation_no_participants() {
         // 0 participation should be insufficient
         let agg = create_sync_aggregate_with_participation(0);
-        assert!(!agg.is_sufficient_participation());
+        assert!(agg.is_insufficient_participation());
     }
 
     #[test]
-    fn test_is_sufficient_participation_boundary() {
+    fn test_is_insufficient_participation_boundary() {
         // Test the exact boundary: participants * 3 >= validators * 2
         // For 512 validators: 512 * 2 / 3 = 341.33..., so need 342 participants
         // For 32 validators: 32 * 2 / 3 = 21.33..., so need 22 participants
         #[cfg(feature = "minimal")]
         {
-            let agg_pass = create_sync_aggregate_with_participation(22);
-            let agg_fail = create_sync_aggregate_with_participation(21);
-            assert!(agg_pass.is_sufficient_participation());
-            assert!(!agg_fail.is_sufficient_participation());
+            let agg_sufficient = create_sync_aggregate_with_participation(22);
+            let agg_insufficient = create_sync_aggregate_with_participation(21);
+            assert!(!agg_sufficient.is_insufficient_participation());
+            assert!(agg_insufficient.is_insufficient_participation());
         }
         #[cfg(not(feature = "minimal"))]
         {
-            let agg_pass = create_sync_aggregate_with_participation(342);
-            let agg_fail = create_sync_aggregate_with_participation(341);
-            assert!(agg_pass.is_sufficient_participation());
-            assert!(!agg_fail.is_sufficient_participation());
+            let agg_sufficient = create_sync_aggregate_with_participation(342);
+            let agg_insufficient = create_sync_aggregate_with_participation(341);
+            assert!(!agg_sufficient.is_insufficient_participation());
+            assert!(agg_insufficient.is_insufficient_participation());
         }
     }
 }
