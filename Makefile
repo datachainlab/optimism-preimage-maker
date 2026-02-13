@@ -9,8 +9,8 @@ chain:
 	cp kurtosis/simple.yaml ./chain/kurtosis-devnet/simple.yaml
 	# devnet L1ChainConfig
 	cp kurtosis/op-service/eth/config.go ./chain/op-service/eth/config.go
-	# kurtosis 1.11.1 is required
-	$(SED) -i 's/v1.8.2-0.20250602144112-2b7d06430e48/v1.11.1/g' ./chain/go.mod
+	# kurtosis 1.15.2 is required
+	$(SED) -i 's/v1.8.2-0.20250602144112-2b7d06430e48/v1.15.2/g' ./chain/go.mod
 	cd chain && go mod tidy
 
 .PHONY: devnet-up

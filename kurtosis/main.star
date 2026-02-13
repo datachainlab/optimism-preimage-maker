@@ -1,4 +1,4 @@
-optimism_package = import_module("github.com/yoshidan/optimism-package/main.star")
+optimism_package = import_module("github.com/datachainlab/optimism-package/main.star")
 
 def run(plan, args):
     # just delegate to optimism-package
