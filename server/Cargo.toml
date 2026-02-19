@@ -30,7 +30,7 @@ kona-registry = { workspace = true }
 alloy-primitives = { workspace = true, features = ["map", "serde"] }
 
 # optimism derivation
-optimism-derivation = { git = "https://github.com/datachainlab/optimism-elc", rev = "v0.1.11", default-features = false }
+optimism-derivation = { git = "https://github.com/datachainlab/optimism-elc", rev = "0ad1aa4bde1c8e52d25f21ee3f426b36b3f9a141", default-features = false }
 
 [dev-dependencies]
 prost = "0.11.9"
