@@ -1,8 +1,7 @@
 //! Contains a concrete implementation of the [KeyValueStore] trait that stores data in memory.
 
 use alloy_primitives::B256;
-use anyhow::Result;
-use kona_host::KeyValueStore;
+use kona_host::{HostError, KeyValueStore};
 use kona_preimage::PreimageKey;
 use optimism_derivation::types::{Preimage, Preimages};
 
@@ -27,7 +26,7 @@ impl KeyValueStore for TracingKeyValueStore {
         self.inner.get(key)
     }
 
-    fn set(&mut self, key: B256, value: Vec<u8>) -> Result<()> {
+    fn set(&mut self, key: B256, value: Vec<u8>) -> Result<(), HostError> {
         self.inner.set(key, value.clone())?;
         self.used.insert(PreimageKey::try_from(key.0)?, value);
         Ok(())

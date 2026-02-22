@@ -11,13 +11,20 @@ serde = { version = "1.0.219", default-features = false, features = ["derive"] }
 serde_json = { version = "1.0.140", default-features = false }
 
 # Kona
-kona-client = { git="https://github.com/op-rs/kona", rev= "kona-node/v1.2.8", default-features = false }
-kona-host = { git="https://github.com/op-rs/kona", rev= "kona-node/v1.2.8", default-features = false }
-kona-proof = { git="https://github.com/op-rs/kona", rev= "kona-node/v1.2.8", default-features = false }
-kona-preimage = {git="https://github.com/op-rs/kona", rev= "kona-node/v1.2.8", default-features = false }
-kona-genesis = { git="https://github.com/op-rs/kona", rev= "kona-node/v1.2.8", default-features = false }
-kona-registry = { git="https://github.com/op-rs/kona", rev= "kona-node/v1.2.8", default-features = false }
+kona-client = { git="https://github.com/ethereum-optimism/optimism", rev= "kona-node/v1.2.10-rc.1", default-features = false }
+kona-host = { git="https://github.com/ethereum-optimism/optimism", rev= "kona-node/v1.2.10-rc.1", default-features = false }
+kona-proof = { git="https://github.com/ethereum-optimism/optimism", rev= "kona-node/v1.2.10-rc.1", default-features = false }
+kona-preimage = {git="https://github.com/ethereum-optimism/optimism", rev= "kona-node/v1.2.10-rc.1", default-features = false }
+kona-genesis = { git="https://github.com/ethereum-optimism/optimism", rev= "kona-node/v1.2.10-rc.1", default-features = false }
+kona-registry = { git="https://github.com/ethereum-optimism/optimism", rev= "kona-node/v1.2.10-rc.1", default-features = false }
 
 # Alloy
-alloy-primitives = { version = "1.4.1", default-features = false }
+alloy-primitives = { version = "1.5.6", default-features = false }
+
+[patch."crates-io"]
+# Unify op-alloy crates to use the same git revision as kona
+op-alloy-consensus = { git = "https://github.com/ethereum-optimism/optimism", rev = "kona-node/v1.2.10-rc.1" }
+op-alloy-network = { git = "https://github.com/ethereum-optimism/optimism", rev = "kona-node/v1.2.10-rc.1" }
+op-alloy-rpc-types = { git = "https://github.com/ethereum-optimism/optimism", rev = "kona-node/v1.2.10-rc.1" }
+op-alloy-rpc-types-engine = { git = "https://github.com/ethereum-optimism/optimism", rev = "kona-node/v1.2.10-rc.1" }
 
