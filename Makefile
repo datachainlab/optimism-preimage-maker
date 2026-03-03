@@ -2,7 +2,7 @@ SED = $(shell which gsed 2>/dev/null || echo sed)
 
 .PHONY: chain
 chain:
-	git clone --depth 1 -b op-node/v1.16.6 https://github.com/ethereum-optimism/optimism ./chain
+	git clone --depth 1 -b op-node/v1.16.7 https://github.com/ethereum-optimism/optimism ./chain
 	# override devnet config
 	cp kurtosis/kurtosis.yaml ./chain/kurtosis-devnet/optimism-package-trampoline/kurtosis.yml
 	cp kurtosis/main.star ./chain/kurtosis-devnet/optimism-package-trampoline/main.star
@@ -37,6 +37,14 @@ wait:
 
 .PHONY: server-up
 server-up:
+	$(MAKE) _server-up PREIMAGE_DISTANCE=50
+
+.PHONY: server-up-long
+server-up-long:
+	$(MAKE) _server-up PREIMAGE_DISTANCE=300
+
+.PHONY: _server-up
+_server-up:
 	mkdir -p .preimage && true
 	mkdir -p .finalized_l1 && true
 	@L2_ROLLUP_PORT=$$(jq -r '.l2RollupPort' hostPort.json);\
@@ -52,7 +60,7 @@ server-up:
 		--l1-chain-config=$$L1_CHAIN_CONFIG \
 		--initial-claimed-l2=53 \
 		--ttl=1800 \
-		--preimage-distance=50 \
+		--preimage-distance=$(PREIMAGE_DISTANCE) \
 		--purger-interval-seconds=100
 
 .PHONY: test

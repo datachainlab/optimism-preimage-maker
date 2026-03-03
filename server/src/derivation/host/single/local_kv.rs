@@ -3,8 +3,7 @@
 
 use crate::derivation::host::single::handler::Derivation;
 use alloy_primitives::B256;
-use anyhow::Result;
-use kona_host::KeyValueStore;
+use kona_host::{HostError, KeyValueStore};
 use kona_preimage::PreimageKey;
 use kona_proof::boot::{
     L1_CONFIG_KEY, L1_HEAD_KEY, L2_CHAIN_ID_KEY, L2_CLAIM_BLOCK_NUMBER_KEY, L2_CLAIM_KEY,
@@ -53,7 +52,7 @@ impl KeyValueStore for LocalKeyValueStore {
         }
     }
 
-    fn set(&mut self, _: B256, _: Vec<u8>) -> Result<()> {
+    fn set(&mut self, _: B256, _: Vec<u8>) -> Result<(), HostError> {
         unreachable!("LocalKeyValueStore is read-only")
     }
 }

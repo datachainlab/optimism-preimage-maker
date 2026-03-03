@@ -47,7 +47,7 @@ pub fn compute_slot_at_timestamp(timestamp: u64, genesis_time: u64) -> Option<u6
         return None;
     }
     let elapsed = timestamp - genesis_time;
-    if elapsed % SECONDS_PER_SLOT != 0 {
+    if !elapsed.is_multiple_of(SECONDS_PER_SLOT) {
         // Allow non-aligned timestamps by rounding down
         return Some(elapsed / SECONDS_PER_SLOT);
     }
