@@ -81,7 +81,7 @@ ethereum_package:
       vc_image: chainsafe/lodestar:v1.41.1
       supernode: true
   network_params:
-    preset: minimal
+    preset: mainnet
     fulu_fork_epoch: 0
     bpo_1_epoch: 0
     bpo_1_max_blobs: 15
