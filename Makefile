@@ -5,10 +5,6 @@ chain:
 	git clone --depth 1 -b op-node/v1.16.10 https://github.com/ethereum-optimism/optimism ./chain
 	# Initialize git submodules (forge-std, etc.)
 	cd chain && git submodule update --init --recursive --depth 1
-	# override devnet config
-	cp kurtosis/kurtosis.yaml ./kurtosis/devnet/kurtosis-devnet/optimism-package-trampoline/kurtosis.yml
-	cp kurtosis/main.star ./kurtosis/devnet/kurtosis-devnet/optimism-package-trampoline/main.star
-	cp kurtosis/simple.yaml ./kurtosis/devnet/kurtosis-devnet/simple.yaml
 	# devnet L1ChainConfig
 	cp kurtosis/op-service/eth/config.go ./chain/op-service/eth/config.go
 	# Sync dependencies
