@@ -1,19 +1,5 @@
 SED = $(shell which gsed 2>/dev/null || echo sed)
 
-.PHONY: chain
-chain:
-	git clone --depth 1 -b op-node/v1.16.10 https://github.com/ethereum-optimism/optimism ./chain
-	# Initialize git submodules (forge-std, etc.)
-	cd chain && git submodule update --init --recursive --depth 1
-	# devnet L1ChainConfig
-	cp kurtosis/op-service/eth/config.go ./chain/op-service/eth/config.go
-	# Sync dependencies
-	cd kurtosis/devnet && go mod tidy
-
-.PHONY: devnet-up
-devnet-up:
-	cd kurtosis/devnet/kurtosis-devnet && just simple-devnet
-
 .PHONY: set-port
 set-port:
 	scripts/port.sh
@@ -69,11 +55,6 @@ test:
 .PHONY: inspect
 inspect:
 	cargo test --manifest-path=./server/Cargo.toml -- --ignored
-
-.PHONY: devnet-down
-devnet-down:
-	@ENCLAVE=$$(kurtosis enclave ls | awk 'NR==2 {print $$1}'); kurtosis enclave rm -f $$ENCLAVE
-	kurtosis engine stop
 
 .PHONY: sync-lock
 sync-lock:
