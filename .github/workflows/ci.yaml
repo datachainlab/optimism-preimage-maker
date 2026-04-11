@@ -11,6 +11,7 @@ on:
 
 env:
   DEVNET_REF: v1.0.0
+  OP_TAG: op-node/v1.16.11
 
 jobs:
   lint:
@@ -64,11 +65,9 @@ jobs:
           sudo apt install kurtosis-cli=1.15.2 -V
       - name: Clone optimism-devnet
         run: git clone --depth 1 -b ${{ env.DEVNET_REF }} https://github.com/datachainlab/optimism-devnet.git ../optimism-devnet
-      - name: Prepare optimism
-        run: make chain
-        working-directory: ../optimism-devnet
       - name: Start optimism
         run: |
+          OP_TAG=${{ env.OP_TAG }} make chain
           make devnet-up
         working-directory: ../optimism-devnet
       - name: Setup ports and deploy contracts
