@@ -10,8 +10,9 @@ on:
       - develop
 
 env:
-  DEVNET_REF: v1.0.0
-  OP_TAG: op-node/v1.16.11
+  DEVNET_REF: v1.1.0
+  OP_TAG: op-node/v1.16.12
+  LODESTAR_VERSION: v1.42.0
 
 jobs:
   lint:
@@ -68,7 +69,7 @@ jobs:
       - name: Start optimism
         run: |
           OP_TAG=${{ env.OP_TAG }} make chain
-          make devnet-up
+          LODESTAR_VERSION=${{ env.LODESTAR_VERSION }} make devnet-up
         working-directory: ../optimism-devnet
       - name: Setup ports and deploy contracts
         run: |
