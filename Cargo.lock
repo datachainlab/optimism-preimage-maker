@@ -4208,7 +4208,7 @@ dependencies = [
 [[package]]
 name = "optimism-derivation"
 version = "0.1.1"
-source = "git+https://github.com/datachainlab/optimism-elc?rev=15783303811b870d81fb4d5f094ee6cecdeb02f8#15783303811b870d81fb4d5f094ee6cecdeb02f8"
+source = "git+https://github.com/datachainlab/optimism-elc?rev=1adb3a807f6bc20fd91b03d538f4599722ebb67d#1adb3a807f6bc20fd91b03d538f4599722ebb67d"
 dependencies = [
  "alloy-consensus",
  "alloy-eips",
@@ -5524,9 +5524,9 @@ checksum = "f87165f0995f63a9fbeea62b64d10b4d9d8e78ec6d7d51fb2125fda7bb36788f"
 
 [[package]]
 name = "rustls-webpki"
-version = "0.103.10"
+version = "0.103.12"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "df33b2b81ac578cabaf06b89b0631153a3f416b0a886e8a7a1707fb51abbd1ef"
+checksum = "8279bb85272c9f10811ae6a6c547ff594d6a7f3c6c6b02ee9726d1d0dcfcdd06"
 dependencies = [
  "aws-lc-rs",
  "ring",
