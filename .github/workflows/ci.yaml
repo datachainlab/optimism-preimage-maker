@@ -11,7 +11,7 @@ on:
 
 env:
   DEVNET_REF: v1.1.0
-  OP_TAG: op-node/v1.18.0
+  OP_TAG: op-node/v1.18.1
   LODESTAR_VERSION: v1.42.0
 
 jobs:
