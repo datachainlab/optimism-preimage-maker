@@ -9,6 +9,11 @@ on:
       - main
       - develop
 
+env:
+  DEVNET_REF: v1.1.0
+  OP_TAG: op-node/v1.18.1
+  LODESTAR_VERSION: v1.42.0
+
 jobs:
   lint:
     name: lint
@@ -59,11 +64,15 @@ jobs:
           sudo apt update
           sudo apt remove kurtosis-cli
           sudo apt install kurtosis-cli=1.15.2 -V
-      - name: Prepare optimism
-        run: make chain
+      - name: Clone optimism-devnet
+        run: git clone --depth 1 -b ${{ env.DEVNET_REF }} https://github.com/datachainlab/optimism-devnet.git ../optimism-devnet
       - name: Start optimism
         run: |
-          make devnet-up
+          OP_TAG=${{ env.OP_TAG }} make chain
+          LODESTAR_VERSION=${{ env.LODESTAR_VERSION }} make devnet-up
+        working-directory: ../optimism-devnet
+      - name: Setup ports and deploy contracts
+        run: |
           make set-port
           make test-deploy-tx
           sleep 30
@@ -74,3 +83,7 @@ jobs:
         run: make wait
       - name: Test
         run: make test
+      - name: Stop devnet
+        if: always()
+        run: make devnet-down
+        working-directory: ../optimism-devnet

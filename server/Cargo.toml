@@ -9,7 +9,7 @@ hashbrown = {workspace = true}
 serde = { workspace = true }
 serde_json = { workspace = true}
 
-reqwest = "0.12"
+reqwest = { version = "0.13", features = ["json"] }
 clap = { version = "4.5.18", features = ["derive", "env"] }
 tracing = { version = "0.1", default-features = false }
 tracing-subscriber = { version = "0.3", features = ["fmt", "env-filter"] }
@@ -30,7 +30,7 @@ kona-registry = { workspace = true }
 alloy-primitives = { workspace = true, features = ["map", "serde"] }
 
 # optimism derivation
-optimism-derivation = { git = "https://github.com/datachainlab/optimism-elc", rev = "58e7aae28689b69508d0c0ff3fa7d9202d371b6a", default-features = false }
+optimism-derivation = { git = "https://github.com/datachainlab/optimism-elc", tag = "v0.1.14", default-features = false }
 
 [dev-dependencies]
 prost = "0.11.9"
