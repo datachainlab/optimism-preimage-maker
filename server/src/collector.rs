@@ -536,7 +536,10 @@ mod tests {
         async fn get_block_number_by_hash(&self, _hash: B256) -> anyhow::Result<u64> {
             let mut index = self.call_index.lock().unwrap();
             let block_numbers = self.block_numbers.lock().unwrap();
-            let block_number = block_numbers.get(*index).copied().unwrap_or(*block_numbers.last().unwrap());
+            let block_number = block_numbers
+                .get(*index)
+                .copied()
+                .unwrap_or(*block_numbers.last().unwrap());
             *index += 1;
             Ok(block_number)
         }

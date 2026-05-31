@@ -56,7 +56,9 @@ impl<'de> serde::Deserialize<'de> for LightClientHeader {
         let execution_block_hash = raw
             .execution_block_hash
             .or(raw.execution.map(|e| e.block_hash))
-            .ok_or_else(|| serde::de::Error::custom("missing execution_block_hash or execution.block_hash"))?;
+            .ok_or_else(|| {
+                serde::de::Error::custom("missing execution_block_hash or execution.block_hash")
+            })?;
 
         Ok(LightClientHeader {
             beacon: raw.beacon,
