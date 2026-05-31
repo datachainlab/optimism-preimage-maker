@@ -123,7 +123,7 @@ pub async fn test_derivation_success() {
         let finalized_l1: LightClientFinalityUpdateResponse =
             serde_json::from_value(finalized_l1_data.raw_finality_update).unwrap();
         assert_eq!(
-            finalized_l1.data.finalized_header.execution.block_hash,
+            finalized_l1.data.finalized_header.execution_block_hash,
             metadata.l1_head
         );
 
