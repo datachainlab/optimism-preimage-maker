@@ -11,7 +11,7 @@ on:
 
 env:
   DEVNET_REF: v1.2.0
-  OP_TAG: op-node/v1.18.2
+  OP_TAG: op-node/v1.19.0
   GETH_VERSION: v1.17.3
   LODESTAR_VERSION: v1.43.0
 
