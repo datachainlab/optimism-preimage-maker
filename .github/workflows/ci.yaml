@@ -10,7 +10,7 @@ on:
       - develop
 
 env:
-  DEVNET_REF: v1.3.0
+  DEVNET_REF: v1.3.1
   OP_TAG: op-node/v1.19.0
   GETH_VERSION: v1.17.3
   LODESTAR_VERSION: v1.43.0

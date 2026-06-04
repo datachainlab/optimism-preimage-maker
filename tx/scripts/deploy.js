@@ -2,7 +2,7 @@ const hre = require("hardhat");
 
 async function main() {
     const App = await hre.ethers.getContractFactory("App");
-    const app = await App.deploy();
+    const app = await App.deploy({ gasLimit: 10000000 });
 
     await app.waitForDeployment();
 

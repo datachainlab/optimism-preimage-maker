@@ -33,7 +33,7 @@ async function main() {
     const { v, r, s } = hre.ethers.Signature.from(signature);
 
     console.log("Sending recover transaction...");
-    const tx = await app.recover(hash, v, r, s);
+    const tx = await app.recover(hash, v, r, s, { gasLimit: 10000000 });
     console.log("Tx hash:", tx.hash);
 
     await tx.wait();
