@@ -24,17 +24,35 @@ pub struct BeaconBlockHeader {
     pub slot: u64,
 }
 
-#[derive(Debug, Clone, serde::Deserialize)]
+/// LightClientHeader where `execution.block_hash` contains the block hash.
+#[derive(Debug, Clone)]
 pub struct LightClientHeader {
     pub beacon: BeaconBlockHeader,
-    pub execution: ExecutionPayloadHeader,
+    pub execution_block_hash: B256,
 }
 
-#[derive(Debug, Clone, serde::Deserialize)]
-pub struct ExecutionPayloadHeader {
-    pub block_hash: B256,
-    #[serde(deserialize_with = "deserialize_u64_from_str")]
-    pub block_number: u64,
+impl<'de> serde::Deserialize<'de> for LightClientHeader {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        #[derive(serde::Deserialize)]
+        struct ExecutionPayloadHeader {
+            block_hash: B256,
+        }
+
+        #[derive(serde::Deserialize)]
+        struct RawLightClientHeader {
+            beacon: BeaconBlockHeader,
+            execution: ExecutionPayloadHeader,
+        }
+
+        let raw = RawLightClientHeader::deserialize(deserializer)?;
+        Ok(LightClientHeader {
+            beacon: raw.beacon,
+            execution_block_hash: raw.execution.block_hash,
+        })
+    }
 }
 
 #[derive(Clone, serde::Deserialize)]
