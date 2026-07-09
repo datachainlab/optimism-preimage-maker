@@ -24,7 +24,8 @@ pub struct BeaconBlockHeader {
     pub slot: u64,
 }
 
-/// LightClientHeader where `execution.block_hash` contains the block hash.
+/// LightClientHeader whose `execution_block_hash` field is mapped from
+/// `execution.block_hash` in the beacon API response.
 #[derive(Debug, Clone)]
 pub struct LightClientHeader {
     pub beacon: BeaconBlockHeader,

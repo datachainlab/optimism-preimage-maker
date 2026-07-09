@@ -59,7 +59,7 @@ impl L1Client for HttpL1Client {
         let request_body = serde_json::json!({
             "jsonrpc": "2.0",
             "method": "eth_getBlockByHash",
-            "params": [format!("{:?}", hash), false],
+            "params": [hash, false],
             "id": 1
         });
 
@@ -71,10 +71,13 @@ impl L1Client for HttpL1Client {
             .await?;
 
         if !response.status().is_success() {
+            let status = response.status();
+            let body = response
+                .text()
+                .await
+                .unwrap_or_else(|e| format!("<failed to read body: {e}>"));
             return Err(anyhow::anyhow!(
-                "Request failed with status: {} body={:?}",
-                response.status(),
-                response.text().await
+                "Request failed with status: {status} body={body}"
             ));
         }
 
