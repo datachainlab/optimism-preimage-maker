@@ -361,7 +361,7 @@ where
     ///
     async fn commit_batch(&self, mut successes: Vec<(PreimageMetadata, Vec<u8>)>) -> Option<u64> {
         // Sort by claimed block number to ensure deterministic order of preimages
-        successes.sort_by(|a, b| a.0.claimed.cmp(&b.0.claimed));
+        successes.sort_by_key(|a| a.0.claimed);
 
         let mut latest_l2 = None;
         for (metadata, preimage) in successes {
