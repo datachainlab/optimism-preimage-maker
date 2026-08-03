@@ -86,7 +86,7 @@ impl FilePreimageRepository {
         )
     }
     fn sort(metadata_list: &mut [PreimageMetadata]) {
-        metadata_list.sort_by(|a, b| a.claimed.cmp(&b.claimed));
+        metadata_list.sort_by_key(|a| a.claimed);
     }
 }
 

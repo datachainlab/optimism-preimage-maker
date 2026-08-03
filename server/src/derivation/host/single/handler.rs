@@ -101,7 +101,7 @@ impl Derivation {
         let providers = cfg.create_providers().await?;
         let backend =
             OnlineHostBackend::new(cfg, kv_store.clone(), providers, SingleChainHintHandler)
-                .with_proactive_hint(HintType::L2PayloadWitness);
+                .with_high_level_hint(HintType::L2PayloadWitness);
 
         let server_task = self.run_server(preimage.host, hint.host, backend);
         let client_task = self.run_client(preimage.client, hint.client);
