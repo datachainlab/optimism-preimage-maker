@@ -10,9 +10,8 @@ on:
       - develop
 
 env:
-  # v1.6.0-rc2 pins the glamsterdam L1 clients and op-node/v1.19.7 itself, so the
-  # client versions are no longer passed in from here.
   DEVNET_REF: v1.6.0-rc2
+  KURTOSIS_VERSION: 1.18.1
 
 jobs:
   lint:
@@ -58,12 +57,14 @@ jobs:
         with:
           version: 'v1.0.0'
       - name: Install kurtosis
+        # The apt repo at apt.fury.io stops at 1.15.2, so install the release tarball
+        # instead. optimism-devnet's kurtosis SDK refuses to talk to an older engine.
         run: |
-          sudo apt-get install jq
-          echo "deb [trusted=yes] https://apt.fury.io/kurtosis-tech/ /" | sudo tee /etc/apt/sources.list.d/kurtosis.list
-          sudo apt update
-          sudo apt remove kurtosis-cli
-          sudo apt install kurtosis-cli=1.18.1 -V
+          sudo apt-get install -y jq
+          curl -fsSL -o /tmp/kurtosis.tar.gz \
+            "https://github.com/kurtosis-tech/kurtosis-cli-release-artifacts/releases/download/${KURTOSIS_VERSION}/kurtosis-cli_${KURTOSIS_VERSION}_linux_amd64.tar.gz"
+          sudo tar -C /usr/local/bin -xzf /tmp/kurtosis.tar.gz kurtosis
+          kurtosis version
       - name: Clone optimism-devnet
         run: git clone --depth 1 -b ${{ env.DEVNET_REF }} https://github.com/datachainlab/optimism-devnet.git ../optimism-devnet
       - name: Start optimism
