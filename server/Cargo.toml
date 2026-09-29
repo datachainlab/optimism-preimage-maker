@@ -30,9 +30,6 @@ kona-registry = { workspace = true }
 alloy-primitives = { workspace = true, features = ["map", "serde"] }
 
 # optimism derivation
-# feature/glamsterdam_kona170: optimism-elc's glamsterdam branch with main merged in,
-# so it carries both the glamsterdam support and the kona v1.7.0 this workspace pins.
-# v0.3.1 (what main points at) is kona v1.7.0 but has no glamsterdam.
 optimism-derivation = { git = "https://github.com/datachainlab/optimism-elc", rev = "394e2a9a164b4c9682fec98b44fee0d8ae947989", default-features = false }
 
 [dev-dependencies]

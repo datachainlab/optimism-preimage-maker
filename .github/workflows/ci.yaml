@@ -10,10 +10,9 @@ on:
       - develop
 
 env:
-  DEVNET_REF: v1.5.0
-  OP_TAG: op-node/v1.19.7
-  GETH_VERSION: v1.17.3
-  LODESTAR_VERSION: v1.47.0
+  # v1.6.0-rc2 pins the glamsterdam L1 clients and op-node/v1.19.7 itself, so the
+  # client versions are no longer passed in from here.
+  DEVNET_REF: v1.6.0-rc2
 
 jobs:
   lint:
@@ -64,13 +63,13 @@ jobs:
           echo "deb [trusted=yes] https://apt.fury.io/kurtosis-tech/ /" | sudo tee /etc/apt/sources.list.d/kurtosis.list
           sudo apt update
           sudo apt remove kurtosis-cli
-          sudo apt install kurtosis-cli=1.15.2 -V
+          sudo apt install kurtosis-cli=1.18.1 -V
       - name: Clone optimism-devnet
         run: git clone --depth 1 -b ${{ env.DEVNET_REF }} https://github.com/datachainlab/optimism-devnet.git ../optimism-devnet
       - name: Start optimism
         run: |
-          OP_TAG=${{ env.OP_TAG }} make chain
-          GETH_VERSION=${{ env.GETH_VERSION }} LODESTAR_VERSION=${{ env.LODESTAR_VERSION }} make devnet-up
+          make chain
+          make devnet-up
         working-directory: ../optimism-devnet
       - name: Setup ports and deploy contracts
         run: |
