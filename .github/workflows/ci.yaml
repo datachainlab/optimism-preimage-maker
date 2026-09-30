@@ -10,7 +10,7 @@ on:
       - develop
 
 env:
-  DEVNET_REF: v1.6.0-rc2
+  DEVNET_REF: v1.6.0-rc3
   KURTOSIS_VERSION: 1.18.1
 
 jobs:
