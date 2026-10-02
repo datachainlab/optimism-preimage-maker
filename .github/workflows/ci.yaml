@@ -10,7 +10,12 @@ on:
       - develop
 
 env:
-  DEVNET_REF: v1.6.0-rc4
+  DEVNET_REF: v1.6.0-rc5
+  # The op-stack tag the devnet builds from. Pinned here rather than taken from the
+  # devnet default, so the kona revision this repo vendors and the op-stack it is
+  # exercised against move together. op-node/v1.19.8 is the same commit as
+  # op-reth/v2.5.0 and kona-node/v1.7.1.
+  OP_TAG: op-node/v1.19.8
   KURTOSIS_VERSION: 1.18.1
 
 jobs:
@@ -69,7 +74,7 @@ jobs:
         run: git clone --depth 1 -b ${{ env.DEVNET_REF }} https://github.com/datachainlab/optimism-devnet.git ../optimism-devnet
       - name: Start optimism
         run: |
-          make chain
+          make chain OP_TAG=${OP_TAG}
           make devnet-up
         working-directory: ../optimism-devnet
       - name: Setup ports and deploy contracts
