@@ -1,5 +1,6 @@
 #![allow(dead_code)]
 use crate::client::beacon_client::HttpBeaconClient;
+use crate::client::l1_client::HttpL1Client;
 use crate::client::l2_client::HttpL2Client;
 use crate::client::l2_client::L2Client;
 use crate::collector::{PreimageCollector, RealDerivationDriver};
@@ -53,6 +54,7 @@ async fn main() -> anyhow::Result<()> {
     );
     let beacon_client =
         HttpBeaconClient::new(config.l1_beacon_address.to_string(), http_client_timeout);
+    let l1_client = HttpL1Client::new(config.l1_node_address.to_string(), http_client_timeout);
     let chain_id = l2_client.chain_id().await?;
     let (rollup_config, l1_chain_config) = if ROLLUP_CONFIGS.get(&chain_id).is_none() {
         // devnet only
@@ -91,6 +93,7 @@ async fn main() -> anyhow::Result<()> {
     let collector = PreimageCollector {
         client: Arc::new(l2_client),
         beacon_client: Arc::new(beacon_client),
+        l1_client: Arc::new(l1_client),
         derivation_driver: Arc::new(RealDerivationDriver),
         config: Arc::new(derivation_config),
         distance: config.preimage_distance,

@@ -24,17 +24,47 @@ pub struct BeaconBlockHeader {
     pub slot: u64,
 }
 
-#[derive(Debug, Clone, serde::Deserialize)]
+/// LightClientHeader supports both pre-Gloas and Gloas+ formats.
+/// - Pre-Gloas: `execution.block_hash` contains the block hash
+/// - Gloas+: `execution_block_hash` contains the block hash
+#[derive(Debug, Clone)]
 pub struct LightClientHeader {
     pub beacon: BeaconBlockHeader,
-    pub execution: ExecutionPayloadHeader,
+    pub execution_block_hash: B256,
 }
 
-#[derive(Debug, Clone, serde::Deserialize)]
-pub struct ExecutionPayloadHeader {
-    pub block_hash: B256,
-    #[serde(deserialize_with = "deserialize_u64_from_str")]
-    pub block_number: u64,
+impl<'de> serde::Deserialize<'de> for LightClientHeader {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        #[derive(serde::Deserialize)]
+        struct ExecutionPayloadHeader {
+            block_hash: B256,
+        }
+
+        #[derive(serde::Deserialize)]
+        struct RawLightClientHeader {
+            beacon: BeaconBlockHeader,
+            #[serde(default)]
+            execution: Option<ExecutionPayloadHeader>,
+            #[serde(default)]
+            execution_block_hash: Option<B256>,
+        }
+
+        let raw = RawLightClientHeader::deserialize(deserializer)?;
+        let execution_block_hash = raw
+            .execution_block_hash
+            .or(raw.execution.map(|e| e.block_hash))
+            .ok_or_else(|| {
+                serde::de::Error::custom("missing execution_block_hash or execution.block_hash")
+            })?;
+
+        Ok(LightClientHeader {
+            beacon: raw.beacon,
+            execution_block_hash,
+        })
+    }
 }
 
 #[derive(Clone, serde::Deserialize)]
