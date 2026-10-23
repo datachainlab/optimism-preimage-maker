@@ -1,4 +1,5 @@
 use crate::client::beacon_client::BeaconClient;
+use crate::client::l1_client::L1Client;
 use crate::client::l2_client::{L2Client, SyncStatus};
 use crate::client::period::compute_period_from_slot;
 use crate::data::finalized_l1_repository::{FinalizedL1Data, FinalizedL1Repository};
@@ -70,16 +71,18 @@ fn build_batch(
     batch
 }
 
-pub struct PreimageCollector<T, F, L, B, D>
+pub struct PreimageCollector<T, F, L, B, D, E>
 where
     T: PreimageRepository,
     F: FinalizedL1Repository,
     L: L2Client,
     B: BeaconClient,
     D: DerivationDriver,
+    E: L1Client,
 {
     pub client: Arc<L>,
     pub beacon_client: Arc<B>,
+    pub l1_client: Arc<E>,
     pub derivation_driver: Arc<D>,
     pub config: Arc<DerivationConfig>,
     pub preimage_repository: Arc<T>,
@@ -90,13 +93,14 @@ where
     pub interval_seconds: u64,
 }
 
-impl<T, F, L, B, D> PreimageCollector<T, F, L, B, D>
+impl<T, F, L, B, D, E> PreimageCollector<T, F, L, B, D, E>
 where
     T: PreimageRepository,
     F: FinalizedL1Repository,
     L: L2Client,
     B: BeaconClient,
     D: DerivationDriver,
+    E: L1Client,
 {
     /// Starts the asynchronous process to continually check and collect claimed metadata.
     ///
@@ -264,7 +268,24 @@ where
             }
 
             // Check block_number against sync_status
-            let block_number = finality_update.data.finalized_header.execution.block_number;
+            let execution_block_hash = finality_update.data.finalized_header.execution_block_hash;
+            let block_number = match self
+                .l1_client
+                .get_block_number_by_hash(execution_block_hash)
+                .await
+            {
+                Ok(bn) => bn,
+                Err(e) => {
+                    warn_or_error!(
+                        attempts_count,
+                        "failed to fetch block_number from L1 client: {:?}, attempts={}, retrying...",
+                        e, attempts_count
+                    );
+                    time::sleep(time::Duration::from_secs(10)).await;
+                    continue;
+                }
+            };
+
             if block_number < sync_status.finalized_l1.number {
                 warn_or_error!(
                     attempts_count,
@@ -294,14 +315,15 @@ where
             break (finalized_l1_data, finality_update);
         };
 
+        let l1_head_hash = finality_update.data.finalized_header.execution_block_hash;
+
         info!(
-            "l1_head for derivation = {:?}, finalized_slot = {}, finalized_period = {}",
-            finality_update.data.finalized_header.execution,
+            "l1_head for derivation: block_hash={:?}, finalized_slot={}, finalized_period={}",
+            l1_head_hash,
             finality_update.data.finalized_header.beacon.slot,
             finalized_l1_data.period
         );
 
-        let l1_head_hash = finality_update.data.finalized_header.execution.block_hash;
         Some((l1_head_hash, finalized_l1_data))
     }
 
@@ -422,6 +444,7 @@ mod tests {
     use crate::client::beacon_client::{
         BeaconClient, LightClientFinalityUpdateResponse, LightClientUpdateResponse,
     };
+    use crate::client::l1_client::L1Client;
     use crate::client::l2_client::{Block, L2Client, OutputRootAtBlock, SyncStatus};
     use crate::derivation::host::single::config::Config;
     use crate::derivation::host::single::handler::DerivationConfig;
@@ -487,6 +510,38 @@ mod tests {
         }
         async fn get_genesis(&self) -> anyhow::Result<crate::client::beacon_client::GenesisData> {
             Ok(crate::client::beacon_client::GenesisData { genesis_time: 0 })
+        }
+    }
+
+    struct MockL1Client {
+        block_numbers: Arc<Mutex<Vec<u64>>>,
+        call_index: Arc<Mutex<usize>>,
+    }
+
+    impl MockL1Client {
+        fn new(block_numbers: Vec<u64>) -> Self {
+            Self {
+                block_numbers: Arc::new(Mutex::new(block_numbers)),
+                call_index: Arc::new(Mutex::new(0)),
+            }
+        }
+
+        fn with_single(block_number: u64) -> Self {
+            Self::new(vec![block_number])
+        }
+    }
+
+    #[async_trait]
+    impl L1Client for MockL1Client {
+        async fn get_block_number_by_hash(&self, _hash: B256) -> anyhow::Result<u64> {
+            let mut index = self.call_index.lock().unwrap();
+            let block_numbers = self.block_numbers.lock().unwrap();
+            let block_number = block_numbers
+                .get(*index)
+                .copied()
+                .unwrap_or(*block_numbers.last().unwrap());
+            *index += 1;
+            Ok(block_number)
         }
     }
 
@@ -647,6 +702,7 @@ mod tests {
         let collector = PreimageCollector {
             client: l2_client,
             beacon_client,
+            l1_client: Arc::new(MockL1Client::with_single(95)),
             derivation_driver,
             config: derivation_config,
             preimage_repository: mock_preimage_repo.clone(),
@@ -757,6 +813,7 @@ mod tests {
         let collector = PreimageCollector {
             client: l2_client,
             beacon_client,
+            l1_client: Arc::new(MockL1Client::with_single(95)),
             derivation_driver,
             config: derivation_config,
             preimage_repository: mock_preimage_repo,
@@ -822,6 +879,7 @@ mod tests {
         let collector = PreimageCollector {
             client: l2_client,
             beacon_client,
+            l1_client: Arc::new(MockL1Client::with_single(95)),
             derivation_driver,
             config: derivation_config,
             preimage_repository: mock_preimage_repo,
@@ -917,6 +975,7 @@ mod tests {
         let collector = PreimageCollector {
             client: l2_client,
             beacon_client,
+            l1_client: Arc::new(MockL1Client::with_single(95)),
             derivation_driver,
             config: derivation_config,
             preimage_repository: mock_preimage_repo.clone(),
@@ -1041,6 +1100,7 @@ mod tests {
         let collector = PreimageCollector {
             client: l2_client,
             beacon_client,
+            l1_client: Arc::new(MockL1Client::with_single(95)),
             derivation_driver,
             config: derivation_config,
             preimage_repository: mock_preimage_repo.clone(),
@@ -1219,6 +1279,27 @@ mod tests {
         MockL2Client,
         MockBeaconClientWithRetry,
         MockDerivationDriver,
+        MockL1Client,
+    > {
+        create_collector_for_retry_test_with_block_numbers(
+            beacon_client,
+            finalized_l1_number,
+            vec![95],
+        )
+        .await
+    }
+
+    async fn create_collector_for_retry_test_with_block_numbers(
+        beacon_client: Arc<MockBeaconClientWithRetry>,
+        finalized_l1_number: u64,
+        block_numbers: Vec<u64>,
+    ) -> PreimageCollector<
+        MockPreimageRepository,
+        MockFinalizedL1Repository,
+        MockL2Client,
+        MockBeaconClientWithRetry,
+        MockDerivationDriver,
+        MockL1Client,
     > {
         let sync_status = SyncStatus {
             current_l1: dummy_l1(100),
@@ -1263,6 +1344,7 @@ mod tests {
         PreimageCollector {
             client: l2_client,
             beacon_client,
+            l1_client: Arc::new(MockL1Client::new(block_numbers)),
             derivation_driver,
             config: derivation_config,
             preimage_repository: mock_preimage_repo,
@@ -1343,14 +1425,14 @@ mod tests {
     #[tokio::test]
     async fn test_get_l1_head_retry_on_block_number_delayed() {
         // Test: block_number < sync_status.finalized_l1.number triggers retry
-        // First call: block_number=80, sync_status expects 90 -> delayed
-        // Second call: block_number=95 >= 90 -> success
+        // First call: L1 client returns block_number=80, sync_status expects 90 -> delayed
+        // Second call: L1 client returns block_number=95 >= 90 -> success
         let l1_head = B256::repeat_byte(0x11);
         let full_participation = "0x".to_string() + &"ff".repeat(4);
 
         let finality_updates = vec![
-            make_finality_update_json(l1_head, 100, 80, 105, &full_participation), // block_number=80 < 90
-            make_finality_update_json(l1_head, 100, 95, 105, &full_participation), // block_number=95 >= 90
+            make_finality_update_json(l1_head, 100, 80, 105, &full_participation),
+            make_finality_update_json(l1_head, 100, 95, 105, &full_participation),
         ];
         let light_client_updates = vec![
             make_light_client_update_json(100),
@@ -1363,7 +1445,13 @@ mod tests {
         ));
 
         // sync_status.finalized_l1.number = 90
-        let collector = create_collector_for_retry_test(beacon_client.clone(), 90).await;
+        // L1 client returns: 80 (first call, triggers retry), 95 (second call, success)
+        let collector = create_collector_for_retry_test_with_block_numbers(
+            beacon_client.clone(),
+            90,
+            vec![80, 95],
+        )
+        .await;
         let sync_status = collector.client.sync_status().await.unwrap();
 
         let result = collector.get_l1_head_and_finalized_data(&sync_status).await;
