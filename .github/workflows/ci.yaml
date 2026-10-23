@@ -47,6 +47,13 @@ jobs:
           submodules: recursive
           fetch-depth: 0
       - uses: actions-rust-lang/setup-rust-toolchain@v1
+      - name: Install Node
+        # Pinned rather than left to the runner image: hardhat and npm validate their
+        # downloads against Node's own bundled CA store, and 24.22.1 is the first
+        # release that drops the compromised eMudhra roots.
+        uses: actions/setup-node@v4
+        with:
+          node-version: '24.22.1'
       - name: Clean up unnecessary packages
         run: |
           sudo rm -rf "/usr/share/dotnet" || true
