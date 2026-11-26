@@ -10,13 +10,16 @@ on:
       - develop
 
 env:
-  DEVNET_REF: v1.6.0-rc5
+  DEVNET_REF: v1.6.0
   # The op-stack tag the devnet builds from. Pinned here rather than taken from the
   # devnet default, so the kona revision this repo vendors and the op-stack it is
-  # exercised against move together. op-node/v1.19.8 is the same commit as
-  # op-reth/v2.5.0 and kona-node/v1.7.1.
-  OP_TAG: op-node/v1.19.8
+  # exercised against move together. op-node/v1.20.0 is the same commit as
+  # op-reth/v2.8.0 and kona-node/v1.9.0.
+  OP_TAG: op-node/v1.20.0
   KURTOSIS_VERSION: 1.18.1
+  # optimism-devnet's Makefile passes LODESTAR_IMAGE to the devnet, and v1.6.0 still
+  # defaults it to v1.51.0-rc.0.
+  LODESTAR_IMAGE: chainsafe/lodestar:v1.51.0
 
 jobs:
   lint:
