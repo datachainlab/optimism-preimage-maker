@@ -74,4 +74,4 @@ if __name__ == "__main__":
     lock_kona = "../../../ethereum-optimism/optimism/rust/Cargo.lock"
     lock_self = "../Cargo.lock"
 
-    overwrite_lock(lock_kona, lock_self, set(), {})
+    overwrite_lock(lock_kona, lock_self, {"async-trait"}, {})

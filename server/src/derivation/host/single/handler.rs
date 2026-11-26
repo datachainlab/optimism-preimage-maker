@@ -13,7 +13,6 @@ use kona_preimage::{
     PreimageKey,
 };
 use kona_proof::boot::{L1_CONFIG_KEY, L2_ROLLUP_CONFIG_KEY};
-use kona_proof::HintType;
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 use tokio::sync::RwLock;
@@ -100,8 +99,7 @@ impl Derivation {
         };
         let providers = cfg.create_providers().await?;
         let backend =
-            OnlineHostBackend::new(cfg, kv_store.clone(), providers, SingleChainHintHandler)
-                .with_high_level_hint(HintType::L2PayloadWitness);
+            OnlineHostBackend::new(cfg, kv_store.clone(), providers, SingleChainHintHandler);
 
         let server_task = self.run_server(preimage.host, hint.host, backend);
         let client_task = self.run_client(preimage.client, hint.client);
